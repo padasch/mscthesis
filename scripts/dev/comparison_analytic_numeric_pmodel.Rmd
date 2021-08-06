@@ -1,0 +1,501 @@
+```{r}
+library(tidyverse)
+source("~/projects/rpmodel/R/calc_ftemp_inst_jmax.R")
+```
+
+
+# Numerical P-Model
+## Get data
+
+```{r}
+## Get rsofun output and observed optimal temperature data
+df_rsofun <- readRDS("~/projects/mscthesis/data/dev/rsofun_outputs/df_rsofun_wang2017_tau30_Kumar19.rds")%>% 
+    rename(dataset  = sitename,
+           agg_date = date) %>% 
+    mutate(dataset = as.factor(dataset))
+df_topt   <- readRDS("~/projects/mscthesis/data/dev/optimal_temp_k19/optimal_temp_ci_ambient.rds") %>% 
+    unnest(fit_opt) %>% 
+    dplyr::select(dataset, agg_date, topt) %>% 
+    rename(tc_opt_obs = topt)
+
+
+## Get dates and sites where optimal temperature data is available
+df_rsofun_red <- left_join(df_topt, df_rsofun) %>% 
+    dplyr::select(dataset, agg_date, tc_growth, kphio, ppfd, patm, vpd, co2, tc_home, fapar, vcmax, jmax, vcmax25, jmax25, tc_leaf, tc_opt_obs) %>% 
+    # slice(1:20)
+    slice(1:nrow(df_topt))
+
+
+## Set global settings for numerical optimization
+vcmax_start <- 20
+jmax_start  <- 20
+gs_start    <- 0.5
+method_jmaxlim_inst <- "smith37"
+```
+
+### Without energy balance
+```{r}
+## Get files
+source("~/projects/rpmodel/vignettes_add/calc_optimal_tleaf_vcmax_jmax.R")
+
+## Get predictions of vcmax, jmax and gs
+df_num <- df_rsofun_red %>% 
+    mutate(method_jmaxlim_inst = method_jmaxlim_inst) %>% 
+    nest(temp = c("tc_leaf", "tc_growth", "ppfd", "co2", "patm", "vpd", "kphio", "fapar", "method_jmaxlim_inst")) %>% 
+    mutate(out_num   = purrr::map(temp, ~calc_optimal_tcleaf_vcmax_jmax(tc_leaf = .$tc_leaf, patm = .$patm, co2 = .$co2, vpd = .$vpd, ppfd = .$ppfd * 3600 * 24, fapar = .$fapar, kphio = .$kphio, beta = 146, c_cost = 0.41, method_jmaxlim_inst = .$method_jmaxlim_inst)),
+           vcmax_num = purrr::map_dbl(out_num, ~ pull(., vcmax_mine)/3600/24),
+           jmax_num = purrr::map_dbl(out_num, ~ pull(., vcmax_mine)/3600/24)) %>% 
+    unnest(temp) %>% 
+    mutate(vcmax25_num = vcmax_num / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth),
+           jmax25_num  = jmax_num  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth, tchome = tc_home))
+    
+ggplot(df_num) +
+    aes(x = vcmax25, y = vcmax25_num) +
+    geom_point() +
+    geom_abline() +
+    ylim(0, 9e-5) +
+    xlim(0, 9e-5)
+
+ggplot(df_num) +
+    aes(x = jmax25, y = jmax25_num) +
+    geom_point() +
+    geom_abline() +
+    ylim(0, 15e-5) +
+    xlim(0, 15e-5)
+```
+
+
+#### T_opt obs ~ pred
+```{r}
+## Get experimental pmodel function -> Load Functions below
+
+## Get data in correct input format
+
+df_num_exp <- df_num %>%
+    dplyr::select(-c(vcmax, jmax, vcmax25, jmax25)) %>%
+    rename(vcmax25 = vcmax25_num,
+           jmax25  = jmax25_num) %>%
+    rowid_to_column("id") %>%  # For verbose output
+    nest(df_slice = c("id", "vcmax25", "jmax25", "vpd", "co2", "ppfd", "fapar","patm", "tc_growth", "tc_home", "kphio")) %>%
+    mutate(rpm_opt = purrr::map(df_slice, ~ pmodel_exp(.))) %>%
+    
+    # Get T_opt
+    unnest(cols = c(df_slice, rpm_opt)) %>%
+    group_by(dataset, tc_growth, tc_opt_obs) %>%
+    nest() %>%
+    mutate(
+        tc_opt_rpm   = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$anet_exp)]),
+        tc_opt_ac    = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$a_c_exp)]),
+        tc_opt_aj    = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$a_j_exp)]),
+    ) %>%
+    
+    # Clean up
+    ungroup(dataset, tc_growth, tc_opt_obs) %>% 
+    unnest()
+
+df_num_exp %>% 
+    ggplot() +
+    aes(x = tc_opt_rpm, y = tc_opt_obs) +
+    geom_point() +
+    geom_abline() +
+    geom_smooth(method = "lm", fullrange = T) +
+    xlim(0, 40) +
+    ylim(0, 40)
+
+lm(tc_opt_obs ~ tc_opt_rpm, data = df_num_exp) %>% summary()
+```
+
+#### T_opt ~ T_growth
+```{r}
+df_num_exp %>% 
+    ggplot() +
+    aes(x = tc_growth, y = tc_opt_rpm) +
+    geom_point() +
+    geom_abline() +
+    xlim(0, 40) +
+    ylim(0, 40)
+```
+
+### With energy balance
+```{r}
+## Get predictions of vcmax, jmax and gs
+df_num_leb <- df_rsofun_red %>%
+    mutate(method_jmaxlim_inst = method_jmaxlim_inst) %>% 
+    nest(temp = c("tc_growth", "ppfd", "co2", "patm", "vpd", "kphio", "fapar", "method_jmaxlim_inst")) %>% 
+    mutate(tc_leaf   = purrr::map_dbl(temp, ~calc_tc_leaf_final(tc_air = .$tc_growth, patm = .$patm, co2 = .$co2, vpd = .$vpd, ppfd = .$ppfd * 3600 * 24, fapar = .$fapar, kphio = .$kphio, beta = 146, c_cost = 0.41, method_jmaxlim_inst = .$method_jmaxlim_inst))) %>% 
+    unnest(temp) %>% 
+    nest(temp = c("tc_leaf", "tc_growth", "ppfd", "co2", "patm", "vpd", "kphio", "fapar", "method_jmaxlim_inst")) %>% 
+    mutate(out_num   = purrr::map(temp, ~calc_optimal_tcleaf_vcmax_jmax(tc_leaf = .$tc_leaf, patm = .$patm, co2 = .$co2, vpd = .$vpd, ppfd = .$ppfd * 3600 * 24, fapar = .$fapar, kphio = .$kphio, beta = 146, c_cost = 0.41, method_jmaxlim_inst = .$method_jmaxlim_inst)),
+           vcmax_num = purrr::map_dbl(out_num, ~ pull(., vcmax_mine)/3600/24),
+           jmax_num = purrr::map_dbl(out_num, ~ pull(., vcmax_mine)/3600/24)) %>% 
+    unnest(temp) %>% 
+    mutate(vcmax25_num = vcmax_num / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth),
+           jmax25_num  = jmax_num  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth, tchome = tc_home))
+    
+ggplot(df_num_leb) +
+    aes(x = vcmax25, y = vcmax25_num) +
+    geom_point() +
+    geom_abline() +
+    ylim(0, 9e-5) +
+    xlim(0, 9e-5)
+
+ggplot(df_num_leb) +
+    aes(x = jmax25, y = jmax25_num) +
+    geom_point() +
+    geom_abline() +
+    ylim(0, 15e-5) +
+    xlim(0, 15e-5)
+```
+
+#### T_opt obs ~ pred
+```{r}
+## Get optimal temperature predictions
+df_num_leb_exp <- df_num_leb %>%
+    dplyr::select(-c(vcmax, jmax, vcmax25, jmax25)) %>%
+    rename(vcmax25 = vcmax25_num,
+           jmax25  = jmax25_num) %>%
+    rowid_to_column("id") %>%  # For verbose output
+    nest(df_slice = c("id", "vcmax25", "jmax25", "vpd", "co2", "ppfd", "fapar","patm", "tc_growth", "tc_home", "kphio")) %>%
+    mutate(rpm_opt = purrr::map(df_slice, ~ pmodel_exp(.))) %>%
+    
+    # Get T_opt
+    unnest(cols = c(df_slice, rpm_opt)) %>%
+    group_by(dataset, tc_growth, tc_opt_obs) %>%
+    nest() %>%
+    mutate(
+        tc_opt_rpm   = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$anet_exp)]),
+        tc_opt_ac    = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$a_c_exp)]),
+        tc_opt_aj    = purrr::map_dbl(data, ~ .$tc_air_exp[which.max(.$a_j_exp)]),
+    ) %>%
+    
+    # Clean up
+    ungroup(dataset, tc_growth, tc_opt_obs) %>% 
+    unnest()
+
+df_num_leb_exp %>% 
+    ggplot() +
+    aes(x = tc_opt_rpm, y = tc_opt_obs) +
+    geom_point() +
+    geom_abline() +
+    geom_smooth(method = "lm", fullrange = T) +
+    xlim(0, 40) +
+    ylim(0, 40)
+
+lm(tc_opt_obs ~ tc_opt_rpm, data = df_num_leb_exp) %>% summary()
+
+```
+
+#### T_opt ~ T_growth
+```{r}
+df_num_leb_exp %>% 
+    ggplot() +
+    aes(x = tc_growth, y = tc_opt_rpm) +
+    geom_point() +
+    geom_abline() +
+    xlim(0, 40) +
+    ylim(0, 40)
+```
+
+
+# Analytical P-Model
+```{r}
+suppressMessages(source("~/Polybox/2_ETH/ONGOING/msc-thesis/rproject/scripts/source_packages+functions.R"))
+source("~/Polybox/2_ETH/ONGOING/msc-thesis/rproject/scripts/fct_inst_rpmodel.R")
+
+co2_to_ca <- function( co2, patm ){
+    ca   <- ( 1.0e-6 ) * co2 * patm         # Pa, atms. CO2
+    return( ca )
+}
+
+df_ana_exp <- calc_tc_opt(toggles = get_toggles()) %>% mutate(dataset = as.factor(sitename))
+
+df_ana_exp %>% 
+    ggplot() +
+    aes(x = tc_opt_rpm, y = tc_opt_obs) +
+    geom_point() +
+    geom_abline() +
+    geom_smooth(method = "lm", fullrange = T) +
+    xlim(0, 40) +
+    ylim(0, 40)
+
+lm(tc_opt_obs ~ tc_opt_rpm, data = df_ana_exp) %>% summary()
+```
+
+# Comparison of the two models
+```{r, fig.height=8}
+df_num_exp     %>% dplyr::select(dataset, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax_num, jmax_num) %>% distinct() %>% summary() %>% knitr::kable()
+df_num_leb_exp %>% dplyr::select(dataset, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax_num, jmax_num) %>% distinct() %>% summary() %>% knitr::kable()
+df_ana_exp     %>% dplyr::select(sitename, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax, jmax) %>% distinct() %>% summary() %>% knitr::kable()
+
+df_1 <- df_num_exp     %>% rename(vcmax = vcmax_num, jmax = jmax_num) %>% dplyr::select(dataset, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax, jmax) %>% distinct() %>% dplyr::mutate(model = "df_num_exp")
+df_2 <- df_num_leb_exp %>% rename(vcmax = vcmax_num, jmax = jmax_num) %>% dplyr::select(dataset, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax, jmax) %>% distinct() %>% dplyr::mutate(model = "df_num_leb_exp")
+df_3 <- df_ana_exp     %>% dplyr::select(dataset, tc_opt_obs, tc_opt_rpm, vcmax25, jmax25, vcmax, jmax) %>% distinct() %>% dplyr::mutate(model = "df_ana")
+
+bind_rows(list(df_1, df_2, df_3)) %>% 
+    pivot_longer(cols = c(tc_opt_rpm, vcmax25, jmax25, vcmax, jmax), names_to = "variable", values_to = "value") %>% 
+    mutate(model = as.factor(model),
+           variable = as.factor(variable)) %>% 
+    ggplot() +
+    geom_boxplot(aes(x = model, y = value, fill = model)) +
+    facet_wrap(~variable, scales = "free_y", ncol = 3) +
+    theme(legend.position = "bottom")
+
+```
+
+
+
+# Functions:
+
+```{r}
+calc_optimal_chi_num <- function( kmm, gammastar, ns_star, ca, vpd, beta ){
+  #-----------------------------------------------------------------------
+  # Input:    - float, 'kmm' : Pa, Michaelis-Menten coeff.
+  #           - float, 'ns_star'  : (unitless) viscosity correction factor for water
+  #           - float, 'vpd' : Pa, vapor pressure deficit
+  # Output:   float, ratio of ci/ca (chi)
+  # Features: Returns an estimate of leaf internal to ambient CO2
+  #           partial pressure following the "simple formulation".
+  # Depends:  - kc
+  #           - ns
+  #           - vpd
+  #-----------------------------------------------------------------------
+  maximise_this_chi <- function( chi, kmm, gammastar, ns_star, ca, vpd, beta ){
+    out <- 1.6 * ns_star * vpd / (ca * (1.0 - chi)) + beta * (chi * ca + kmm)/(chi * ca - gammastar)
+    return(out)
+  }
+
+  out_optim <- optimr::optimr(
+    par       = 0.7,
+    lower     = 0.1,
+    upper     = 0.99,
+    fn        = maximise_this_chi,
+    kmm       = kmm,
+    gammastar = gammastar,
+    ns_star   = ns_star,
+    ca        = ca,
+    vpd       = vpd,
+    beta      = beta,
+    method    = "L-BFGS-B",
+    control   = list( maxit = 100, maximize = TRUE )
+    )
+
+  return(out_optim$par)
+  return(list(jmax_opt = NA, chi_opt = out_optim$par, aj = NA))
+}
+
+pmodel_inst <- function(vcmax25, jmax25, tc_air, vpd, co2, fapar, ppfd, patm, kphio, tc_growth, tc_home){
+
+    ## Set all output variables to NA to ensure output is generated
+    assim <- NA
+    anet <- NA
+    vcmax <- NA
+    jmax <- NA
+    rd <- NA
+    ci <- NA
+    a_j <- NA
+    a_c <- NA
+    ci_j <- NA
+    ci_c <- NA
+    gammastar <- NA
+    term <- NA
+    kmm <- NA
+    min_a <- NA
+    tc_leaf      <- NA
+    tc_optimized <- NA
+    min_a <- NA
+
+	## Local variables ####
+	## Constants
+	tc_leaf <- tc_air
+	beta    <- 146.0
+	
+	## Photosynthetic parameters
+	ca        <- ( 1.0e-6 ) * co2 * patm         # Pa, atms. CO2
+	gammastar <- calc_gammastar(tc_leaf, patm)
+	kmm       <- calc_kmm(tc_leaf, patm)
+	ns_star   <- calc_viscosity_h2o( tc_leaf, patm ) / calc_viscosity_h2o( tc = 25.0, p = 101325.0 )  # (unitless)
+	
+	vcmax     <- vcmax25 * calc_ftemp_inst_vcmax(tc_leaf, tc_growth,          tcref = 25.0, kuma_par = T)
+	jmax      <- jmax25  * calc_ftemp_inst_jmax( tc_leaf, tc_growth, tc_home, tcref = 25.0, kuma_par = T)
+	chi       <- calc_optimal_chi_num(kmm = kmm, gammastar = gammastar, ns_star = ns_star, vpd = vpd, ca = ca, beta = beta)
+	
+	
+	
+	## Electron Transport Rate: Smith 1937
+	L     = 1.0 / sqrt(1.0 + ((4.0 * kphio * ppfd) / jmax)^2)
+	ci	  = chi * ca
+	a_j   = L * kphio * ppfd * ci / (ci + 2*gammastar) * (1.0 - gammastar/ci)
+
+	if (F) {
+	 ## Electron Transport Rate: Farquhar 1989
+		theta   <- 0.85
+		j       <- (kphio * ppfd + jmax - sqrt(( kphio * ppfd + jmax)^2 - (4*kphio*theta*ppfd*jmax))) / (2*theta)
+		m_j     <- ci / (ci + 2*gammastar)
+		a_j     <- j/4 * m_j * (1.0 - gammastar/ci)
+	}
+
+	# Dark respiration (Atkin R/V ratio and Heskel2016 scaling)
+	rd_to_vcmax  = 0.015 # Ratio of Rdark to Vcmax25, number from Atkin et al., 2015 for C3 herbaceous
+	rd_25        = vcmax25 * rd_to_vcmax
+	rd           = rd_25 * calc_ftemp_inst_rd(tc_leaf)
+
+	## Carboxylation Rate, gs free
+	a_c  = vcmax * (ci - gammastar)/(ci + kmm) * (1.0 - gammastar/ci)
+
+	## Stomatal conductances TODO
+	# gs_j = a_j / kv
+	# gs_c = a_j / kv
+	# gs    = min(gs_j, gs_c)
+
+	## Gross and net assimilation
+	assim = min(a_j, a_c)
+	anet  = assim - rd
+	
+	## Output 
+	out <- list(
+		assim = assim,
+		anet = anet,
+		vcmax = vcmax,
+		jmax = jmax,
+		rd = rd,
+		ci = ci,
+		a_j = a_j,
+		a_c = a_c,
+		ci_j = ci_j,
+		ci_c = ci_c,
+		gammastar = gammastar,
+		term = (1.0 - gammastar/ci),
+		kmm = kmm,
+		min_a = min_a,
+		tc_leaf = tc_leaf,
+        tc_optimized = tc_optimized)
+
+	return(out)
+}
+
+pmodel_exp <- function(df_slice){
+
+	# Define empty arrays
+	temp_array      <- seq(0, 40, 0.1 )
+	anet_array	    <- rep(NA, length(temp_array))
+	a_c_array       <- rep(NA, length(temp_array))
+	a_j_array       <- rep(NA, length(temp_array))
+	assim_array     <- rep(NA, length(temp_array))
+	rd_array        <- rep(NA, length(temp_array))
+	dummy_array     <- rep(NA, length(temp_array))
+	gammastar_array <- rep(NA, length(temp_array))
+	vcmax_array     <- rep(NA, length(temp_array))
+	jmax_array      <- rep(NA, length(temp_array))
+	kmm_array       <- rep(NA, length(temp_array))
+	tc_leaf_array   <- rep(NA, length(temp_array))
+	tc_optimized_array      <- rep(NA, length(temp_array))
+	min_a_array     <- rep(NA, length(temp_array))
+
+	if(T){
+		cat("\n", "Slice:", df_slice$id, "/")
+	}
+
+	# Call experimental response and run for tc_leaf from 0 to 40 degC
+	for(i in 1:length(temp_array)){
+
+		if(T){
+			cat('\014')
+			cat("\n", "Slice:", df_slice$id, " | Run:", round(i / length(temp_array) * 100), "% | \n")
+		}
+
+	    out_pmodel_inst_opt = pmodel_inst(
+	        tc_air     = temp_array[i],
+	        vcmax25    = df_slice$vcmax25,
+	        jmax25     = df_slice$jmax25,
+	        vpd        = df_slice$vpd,
+	        co2        = df_slice$co2,
+	        fapar      = df_slice$fapar,
+	        # ppfd       = df_slice$ppfd,
+	        ppfd       = 1500,
+	        patm       = df_slice$patm,
+	        kphio      = df_slice$kphio,
+	        tc_growth  = df_slice$tc_growth,
+	        tc_home    = df_slice$tc_home
+	    )
+
+	anet_array[i]  = out_pmodel_inst_opt$anet
+	assim_array[i] = out_pmodel_inst_opt$assim
+	rd_array[i]    = out_pmodel_inst_opt$rd
+	dummy_array[i] = out_pmodel_inst_opt$term
+	gammastar_array[i] = out_pmodel_inst_opt$gammastar
+	vcmax_array[i] = out_pmodel_inst_opt$vcmax
+	jmax_array[i] = out_pmodel_inst_opt$jmax
+	kmm_array[i] = out_pmodel_inst_opt$kmm
+	a_c_array[i] = out_pmodel_inst_opt$a_c
+	a_j_array[i] = out_pmodel_inst_opt$a_j
+	tc_leaf_array[i] = out_pmodel_inst_opt$tc_leaf
+	tc_optimized_array[i] = out_pmodel_inst_opt$tc_optimized
+	min_a_array[i] = out_pmodel_inst_opt$min_a
+	}
+
+	# Return final tibble with experimental values
+	out <- tibble(
+	    tc_air_exp = temp_array,
+	    anet_exp = anet_array,
+	    agro_exp = assim_array,
+	    rd_exp = rd_array,
+	    term_exp = dummy_array,
+	    gammastar_exp = gammastar_array,
+	    vcmax_exp = vcmax_array,
+	    jmax_exp  = jmax_array,
+	    kmm_exp = kmm_array,
+	    a_c_exp = a_c_array,
+	    a_j_exp = a_j_array,
+	    tc_leaf_exp = tc_leaf_array,
+	    tc_optimized_exp = tc_optimized_array,
+	    min_a = min_a_array
+	)
+
+	return(out)
+}
+```
+
+
+# For debugging
+```{r}
+## Debugging pmodel_inst
+t <- df_num_leb %>%
+    dplyr::select(-c(vcmax, jmax, vcmax25, jmax25)) %>%
+    rename(vcmax25 = vcmax25_num,
+           jmax25  = jmax25_num) %>%
+    rowid_to_column("id") %>%  # For verbose output
+    nest(df_slice = c("id", "vcmax25", "jmax25", "vpd", "co2", "ppfd", "fapar","patm", "tc_growth", "tc_home", "kphio"))
+
+t$df_slice[[1]]
+
+tc_air <- 10
+
+vcmax25 <- t$df_slice[[1]]$vcmax25
+jmax25 <- t$df_slice[[1]]$jmax25
+vpd <- t$df_slice[[1]]$vpd
+co2 <- t$df_slice[[1]]$co2
+fapar <- t$df_slice[[1]]$fapar
+ppfd <- t$df_slice[[1]]$ppfd
+patm <- t$df_slice[[1]]$patm
+kphio <- t$df_slice[[1]]$kphio
+tc_growth <- t$df_slice[[1]]$tc_growth
+tc_home <- t$df_slice[[1]]$tc_home
+
+
+pmodel_inst(vcmax25 = vcmax25,
+            jmax25 = jmax25,
+            tc_air = tc_air,
+            vpd = vpd,
+            co2 = co2,
+            fapar = fapar,
+            ppfd = ppfd,
+            patm = patm,
+            kphio = kphio,
+            tc_growth = tc_growth,
+            tc_home = tc_home)
+
+
+## Debugging pmodel_exp
+df_slice <- t$df_slice[[1]]
+
+```

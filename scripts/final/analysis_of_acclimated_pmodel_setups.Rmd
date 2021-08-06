@@ -1,0 +1,330 @@
+---
+title: "Analysis of Acclimated P-Model Setups"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	error = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE
+)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+
+# Sanity check with rsofun output
+```{r}
+## Getting driver and evaluation data
+load("~/data/rsofun_benchmarking/df_drivers_topt_v3.4.Rdata")
+df_drivers_k19     <- df_drivers_topt
+df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
+
+
+## Run acclimated P-Model
+settings <- get_settings()
+df_accl  <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19, target_var = target_var)
+
+
+## Select variables from acclimated rsofun
+vars_ <- c("vcmax", "jmax", "vcmax25", "jmax25", "tc_growth_air", "kphio", "xi")
+df_rsof <- df_accl %>%
+    dplyr::select(sitename, date) %>% 
+    left_join(readRDS("~/data/mscthesis/final/rsofun_v3.4_topt_k19_tau30.rds") %>% unnest(data)) %>% 
+    dplyr::select(sitename, date, vcmax, jmax, vcmax25, jmax25, debug1, debug2) %>% 
+    rename(tc_growth_air = debug1,
+           kphio         = debug2) %>% 
+    pivot_longer(cols = any_of(vars_), names_to = "variable", values_to = "rsofun")
+
+
+## Select variables from acclimated rpmodel
+df_rpm <- df_accl %>%
+    unnest(c(rpm_accl, forcing)) %>% 
+    dplyr::select(sitename, date, vcmax, jmax, vcmax25, jmax25, tc_growth_air, kphio) %>% 
+    pivot_longer(cols = any_of(vars_), names_to = "variable", values_to = "rpmodel")
+
+    
+## Connect and plot both data frames
+left_join(df_rsof, df_rpm) %>% 
+    # dplyr::filter(variable != "jmax",
+    #               variable != "vcmax",) %>% 
+    ggplot() +
+    aes(x = rsofun, y = rpmodel) +
+    geom_abline() +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~variable, scales = "free", ncol = 2)
+```
+
+
+# Analytical vs. numerical
+## Get driver and evaluation data
+```{r}
+df_drivers_p21    <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds")
+df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_clean.rds") %>%
+    dplyr::select(-author) %>%
+    rename_with(tolower) %>%
+    dplyr::filter(!((is.na(jmax) | is.na(vcmax))),
+                  !is.na(date),
+                  !is.na(lat),
+                  !is.na(lon)) %>%
+    group_by(site, date) %>%
+    nest() %>%
+    ungroup() %>%
+    rename(sitename = site,
+           data_raw = data)
+```
+
+
+## Smith37
+```{r}
+## Analytical
+settings <- get_settings()
+df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21")
+    
+
+## Numerical
+settings$rpmodel_accl$method_optim   <- "numerical"
+df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
+
+
+## Plots
+p_ana_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_num_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+```
+
+
+## Farquhar89
+```{r}
+## Analytical
+settings <- get_settings()
+settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib*4
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+df_ana_f89   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+p_ana_f89    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89"), df_x_dataset = "analytical_f89", df_y = make_df_evaluation_p21_long(df_in = df_ana_f89), df_y_dataset = "peng21")
+    
+
+## Numerical
+settings$rpmodel_accl$method_optim   <- "numerical"
+df_num_f89 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_num_f89  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89"), df_x_dataset = "numerical_f89", df_y = make_df_evaluation_p21_long(df_in = df_num_f89), df_y_dataset = "peng21")
+
+
+## Plots
+p_ana_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_num_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
+```
+
+
+## Leaf energy balance + computing time
+```{r}
+## Analytical
+settings <- get_settings()
+t_start <- Sys.time()
+df_dummy <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+t_ana <- Sys.time() - t_start
+
+
+## Numerical, no EB
+settings$rpmodel_accl$method_optim <- "numerical"
+t_start <- Sys.time()
+df_noeb <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+t_noeb <- Sys.time() - t_start
+p_noeb  <- plot_two_long_df(df_x = make_long_df(df_in = df_noeb, dataset = "no_energy_balance"), df_x_dataset = "no_energy_balance", df_y = make_df_evaluation_p21_long(df_in = df_noeb), df_y_dataset = "peng21")
+
+
+## EB via plantecophys
+settings$rpmodel_accl$energy_balance <- "on"
+t_start <- Sys.time()
+df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+t_eb_pl <- Sys.time() - t_start
+p_eb_pl  <- plot_two_long_df(df_x = make_long_df(df_in = df_eb_pl, dataset = "eb_plantecophys"), df_x_dataset = "eb_plantecophys", df_y = make_df_evaluation_p21_long(df_in = df_eb_pl), df_y_dataset = "peng21")
+
+
+## EB via tealeaves
+t_start <- Sys.time()
+settings$rpmodel_accl$method_eb <- "tealeaves"
+t_start <- Sys.time()
+df_eb_te <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+t_eb_te <- Sys.time() - t_start
+p_eb_te  <- plot_two_long_df(df_x = make_long_df(df_in = df_eb_te, dataset = "eb_tealeaves"), df_x_dataset = "eb_tealeaves", df_y = make_df_evaluation_p21_long(df_in = df_eb_te), df_y_dataset = "peng21")
+
+
+## Computing time (run in console directly is quicker than in chunk!)
+cat(" Computation durations: ")
+cat("\n _______________________")
+cat("\n Analytical Model: ")
+t_ana
+cat("\n Numerical Model: ")
+t_noeb
+cat("\n Planteco Model: ")
+t_eb_pl
+cat("\n Tealeaves Model: ")
+t_eb_te
+
+
+## Plots
+p_noeb + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_eb_pl + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_eb_te + xlim(0, 6e-4) + ylim(0, 6e-4)
+```
+
+
+# Using numerical + smith37
+## Kattge07 vs. Kumarathunge19
+```{r}
+## Kumarathunge19
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+df_k19 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_k19  <- plot_two_long_df(df_x = make_long_df(df_in = df_k19, dataset = "kumarathunge19"), df_x_dataset = "kumarathunge19", df_y = make_df_evaluation_p21_long(df_in = df_k19), df_y_dataset = "peng21")
+
+
+## Kattge07
+settings$rpmodel_accl$method_ftemp <- "kattge07"
+df_k07 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_k07  <- plot_two_long_df(df_x = make_long_df(df_in = df_k07, dataset = "kattge07"), df_x_dataset = "kattge07", df_y = make_df_evaluation_p21_long(df_in = df_k07), df_y_dataset = "peng21")
+
+
+## Plots
+p_k19 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_k07 + xlim(0, 6e-4) + ylim(0, 6e-4)
+```
+
+
+## Acclimation time-spans
+```{r}
+## Reference: All tau = 30:
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+df_all_30 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_all_30  <- plot_two_long_df(df_x = make_long_df(df_in = df_all_30, dataset = "all_tau_30"), df_x_dataset = "all_tau_30", df_y = make_df_evaluation_p21_long(df_in = df_all_30), df_y_dataset = "peng21")
+
+
+## Shorter thermal acclimation: tc_air_tau = 10:
+settings$rpmodel_accl$tau$tc_air <- 10
+df_temp10 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_temp10  <- plot_two_long_df(df_x = make_long_df(df_in = df_temp10, dataset = "temp_tau_10"), df_x_dataset = "temp_tau_10", df_y = make_df_evaluation_p21_long(df_in = df_temp10), df_y_dataset = "peng21")
+
+
+## Shorter light acclimation: ppfd_tau = 10:
+settings$rpmodel_accl$tau$tc_air <- 30
+settings$rpmodel_accl$tau$ppfd   <- 10
+df_ppfd10 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_ppfd10  <- plot_two_long_df(df_x = make_long_df(df_in = df_ppfd10, dataset = "ppfd_tau_10"), df_x_dataset = "ppfd_tau_10", df_y = make_df_evaluation_p21_long(df_in = df_ppfd10), df_y_dataset = "peng21")
+
+
+## Shorter thermal & light acclimation: temp_tau = ppfd_tau = 10:
+settings$rpmodel_accl$tau$tc_air <- 10
+df_tempppfd30 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_tempppfd30  <- plot_two_long_df(df_x = make_long_df(df_in = df_tempppfd30, dataset = "temp_ppfd_tau_10"), df_x_dataset = "temp_ppfd_tau_10", df_y = make_df_evaluation_p21_long(df_in = df_tempppfd30), df_y_dataset = "peng21")
+
+
+## Plots
+p_all_30 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_temp10 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_ppfd10 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_tempppfd30 + xlim(0, 6e-4) + ylim(0, 6e-4)
+```
+
+
+# Final best model for vcmax predictions
+```{r}
+## Best model:
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$energy_balance <- "on"
+settings$rpmodel_accl$tau$tc_air <- 10
+
+
+t_start <- Sys.time()
+df_best <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_best  <- plot_two_long_df(df_x = make_long_df(df_in = df_best, dataset = "num_s37_planteco_temp10"), df_x_dataset = "num_s37_planteco_temp10", df_y = make_df_evaluation_p21_long(df_in = df_best), df_y_dataset = "peng21")
+t_dur   <- Sys.time() - t_start
+
+
+t_dur
+p_best
+```
+
+
+# ---
+## Testzone
+```{r}
+## Get data
+df_drivers_p21    <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds")
+df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_clean.rds") %>%
+    dplyr::select(-author) %>%
+    rename_with(tolower) %>%
+    dplyr::filter(!((is.na(jmax) | is.na(vcmax))),
+                  !is.na(date),
+                  !is.na(lat),
+                  !is.na(lon)) %>%
+    group_by(site, date) %>%
+    nest() %>%
+    ungroup() %>%
+    rename(sitename = site,
+           data_raw = data)
+```
+
+
+### Does implementation of calc_jmax work?
+```{r, fig.width=8, fig.height=2}
+## For Smith37
+## Analytical
+settings     <- get_settings()
+df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21")
+    
+
+## Numerical
+settings$rpmodel_accl$method_optim   <- "numerical"
+df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
+```
+
+```{r, fig.width=8, fig.height=2}
+## Plots
+p1_s37 <- p_ana_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p2_s37 <- p_num_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+
+p1_s37 + p2_s37
+```
+
+
+```{r}
+## For Farquhar89
+## Analytical
+settings     <- get_settings()
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+settings$rpmodel_accl$kphio_calib    <- settings$rpmodel_accl$kphio_calib*4
+df_ana_f89   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+p_ana_f89    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89"), df_x_dataset = "analytical_f89", df_y = make_df_evaluation_p21_long(df_in = df_ana_f89), df_y_dataset = "peng21")
+    
+
+## Numerical
+settings$rpmodel_accl$method_optim   <- "numerical"
+df_num_f89 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_num_f89  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89"), df_x_dataset = "numerical_f89", df_y = make_df_evaluation_p21_long(df_in = df_num_f89), df_y_dataset = "peng21")
+```
+
+
+```{r, fig.width=8, fig.height=2}
+## Plots
+p1_f89 <- p_ana_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p2_f89 <- p_num_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
+
+p1_f89 + p2_f89
+```
+

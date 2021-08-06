@@ -1,0 +1,1126 @@
+---
+title: "Extraction of optimal temperature values from Kumarathunge et al. (2019) data"
+author: "Pascal Schneider"
+date: "6/23/2021"
+output: html_document
+---
+
+```{r sourcing}
+library(tidyverse)
+library(lubridate)
+source("~/projects/mscthesis/scripts/final/data_extraction_optimal_temperature_fit.R")
+path = "~/data/mscthesis/raw/photom_kumarathunge2019"
+```
+
+
+# Notes
+
+- Data extraction followed the filtering criteria applied by K19.
+- Only subset for mature native environment and seasonal data were taken.
+- Running all chunks in this rmarkdown extracts all datapoints for optimal temperature used in this thesis.
+- Subchapter names refer to the first author's last name. See metainfo file loaded at bottom of this script for more information.
+
+# Free Ci conditions
+
+## Setup for fits
+```{r}
+x <- "Tleaf"
+y <- "Photo"
+```
+
+## Data wrangling for aci datapoints at ambient conditions
+### Onoda
+```{r}
+df_onoda <- read_csv(paste0(path,"/aci_datapoints/Onoda_etal.csv")) %>%
+  dplyr::filter(GrowthCa == "amb",
+         #Photo < 8.2, Removed outliers by Dushan but don't know why
+         between(Ci, 250, 350)) %>% 
+  mutate(dataset = "onoda",
+         Season = ifelse(Season == "May", paste(mean.Date(c(dmy("08-05-2002"), dmy("12-05-2002")))),  Season),
+         Season = ifelse(Season == "August", paste(mean.Date(c(dmy("29-07-2002"), dmy("06-08-2002")))), Season),
+         Season = ifelse(Season == "Oct", paste(mean.Date(c(dmy("14-10-2002"), dmy("25-10-2002")))), Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>%
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_onoda %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Cernusak
+```{r}
+df_sav <- read_csv(paste(path,"/aci_datapoints/SIOP Leaf gas exchange Cernusak et al.csv", sep="")) %>% 
+  dplyr::filter(between(CO2R, 390, 410), # Only use data taken at ambient CO2
+         Canopy_position == "Canopy", # Only use leaves at canopy level
+         PARi > 1800) %>% # Only use data at light-saturation
+  mutate(dataset = "savanna",
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf_number")))
+
+df_sav %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### Kelly
+```{r}
+df_kelly <- read_csv(paste(path,"/aci_datapoints/Daintree_ACidata_processed.csv", sep="")) %>% 
+  dplyr::filter(between(CO2R, 375, 425),  # Only use data taken at ambient CO2
+                Ci > 175) %>% # QC by Kumarathunge2019
+  mutate(dataset = "kelly",
+         Season = ifelse(Season == "SUMMER", "2011-04-07", Season), 
+         Season = ifelse(Season == "WINTER", "2010-07-22", Season),  
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Spp")))
+
+df_kelly %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### Togashi
+```{r}
+df_togashi <- read_csv(paste(path,"/aci_datapoints/gwwACidata_processed_new.csv", sep="")) %>% 
+  dplyr::filter(between(Ci,365, 435),
+         !(Curve %in% c(19,23,27,44))) %>% 
+  mutate(dataset = "togashi",
+         Season = ifelse(Season == "Summer", "2017-06-21", Season),  # Assumed winter and summer mid in southern hemisphere, togashi uses "2013-04-04" for all fits to get Tavg_30
+         Season = ifelse(Season == "Winter", "2017-12-21", Season),  # Year of publication assumed, southern hemisphere mid-season assumed
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_togashi %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### Medlyn (eucalypt)
+```{r}
+df_medlyn_eucalypt <- read_csv(paste(path,"/aci_datapoints/TumbarumbaGasex_Spot_Medlyn.csv", sep="")) %>% 
+  dplyr::filter(PARi > 1200,
+         Cond > 0.09) %>% 
+  mutate(dataset = "medlyn_eucalypt",
+         sample_date = dmy(Date),
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Age Class")))
+
+df_medlyn_eucalypt %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### UWS (eucface)
+```{r}
+df_eucface <- read_csv(paste(path,"/aci_datapoints/eucFace_data.csv", sep="")) %>% 
+   group_by(Curve) %>%
+   arrange(Obs) %>%
+   slice(1) %>%
+   ungroup %>% 
+   dplyr::filter(!(Tree %in% c(2,7)),
+          between(CO2R, 400, 430),
+          CO2S > 100) %>% 
+   mutate(dataset = "eucface",
+          sample_date = NA,
+          agg_date = sample_date) %>% 
+   group_by(dataset,
+    agg_date) %>%
+   nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_eucface %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### Slot
+```{r}
+df_slot <- read_csv(paste(path,"/aci_datapoints/SlotWinter2017_NewPhyt.Data.csv", sep="")) %>% 
+  dplyr::filter(Form == "Tree") %>%  
+  mutate(dataset = "slot",
+         sample_date = dmy(Date),
+         # agg_date = round_date(sample_date, unit = "week"), 
+         agg_date = sample_date) %>% # Daily resolution preferred
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_slot %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, r2) %>% arrange(pvalue)
+```
+
+### Tribuzy
+```{r}
+df_tribuzi <- read_csv(paste(path,"/aci_datapoints/AmazonACIdata_f.csv", sep="")) %>% 
+  dplyr::filter(between(Ci, 175, 270)) %>%  
+  mutate(dataset = "tribuzi",
+         Season = ifelse(Season == "wet", "2005-04-15", Season), # wet/dry but no actual information found
+         Season = ifelse(Season == "dry", "2005-10-15", Season),
+         sample_date = ymd(Season), 
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_tribuzi %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, b, fit_method, topt, agg_date, pvalue)
+```
+
+### Wang
+```{r}
+df_wang <- read_csv(paste0(path,"/aci_datapoints/Betula_pendula_Pinus_sylvestris_wang_etal.csv")) %>%
+  dplyr::filter(between(Ci, 240, 400),
+                !(Species == "Betula pendula")) %>%
+  mutate(dataset = "wang",
+         sample_date = dmy(ifelse(Date == "Jul-98", "15-07-1994", Date)),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_wang %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue, r2)
+```
+
+### UWS (whole-tree-chamber)
+```{r}
+df_wtc <- bind_rows(read_csv(paste0(path,"/aci_fits/wtc1.csv")) %>%
+                      mutate(dataset = "wtc1",
+                             Date = ymd(ifelse(Season == "January", "2010-01-01", "2010-11-01"))) %>%
+                      dplyr::filter(CO2_Treat == "Ambient",
+                             Water_treat == "wet",
+                             between(CO2S, 380, 420),
+                             Tleaf > 21),
+                    
+                    read_csv(paste0(path,"/aci_fits/wtc2.csv")) %>%
+                      mutate(dataset = "wtc2",
+                             Date = ymd(Date)) %>%
+                      dplyr::filter(C_treat=="0C",
+                             between(Ci, 70, 330),
+                             CO2R > 40),
+                
+                    read_csv(paste0(path,"/aci_fits/wtc3.csv")) %>% 
+                      mutate(dataset = "wtc3",
+                             Date = dmy(Date)) %>%
+                      dplyr::filter(Treatment == "Ambient",
+                             between(Ci, 110, 390),
+                             CO2S > 350,
+                             !(MeanTemp == "14-Apr" & Chamber == 5)),
+                    
+                    read_csv(paste0(path,"/aci_fits/wtc4.csv")) %>% 
+                      mutate(dataset = "wtc4",
+                             Date = dmy(Date)) %>%  
+                      dplyr::filter(Temp_Treatment == "ambient")) %>% 
+  
+  mutate(dataset = "wtc",
+         sample_date = Date,
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Chamber")))
+
+df_wtc %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, b, agg_date, pvalue) %>% arrange(pvalue)
+```
+
+### Han (cypress)
+```{r}
+df_han_cypress <- read_csv(paste0(path,"/aci_datapoints/Chamaecyparis obtusa_han_etal.csv")) %>%
+  dplyr::filter(between(Ci, 175, 230)) %>% 
+  mutate(dataset = "han_cypress",
+         sample_date = my(paste0(Season, "2004")),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_han_cypress %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, agg_date, pvalue)
+```
+
+### Medlyn (pine)
+```{r}
+df_medlyn_pine <- read_csv(paste(path,"/aci_datapoints/Medlyn_etal_all.csv", sep="")) %>% 
+  dplyr::filter(between(Ci, 175, 350),
+         Curve != 62,
+         !(Species == "Landes" & Season == "Jun"),
+         !(Species == "Tamjoute")) %>%
+  mutate(dataset = "medlyn_pine",
+         Species = ifelse(Species == "Landes", "Pinus pinaster_L", Species),
+         Season = ifelse(Season == "Jul", paste(mean.Date(c(dmy("29/6/1999"), dmy("8/7/1999")))),  Season),
+         Season = ifelse(Season == "AugSept", paste(mean.Date(c(dmy("24/8/1999"), dmy("1/9/1999")))), Season),
+         Season = ifelse(Season == "Nov", paste(mean.Date(c(dmy("16/11/1999"), dmy("25/11/1999")))), Season),
+         Season = ifelse(Season == "Jan", paste(mean.Date(c(dmy("25/1/2000"), dmy("1/2/2000")))), Season),
+         Season = ifelse(Season == "Mar", paste(mean.Date(c(dmy("27/3/2000"), dmy("3/4/2000")))), Season),
+         Season = ifelse(Season == "Jun", paste(mean.Date(c(dmy("7/6/2000"), dmy("14/6/2000")))), Season),
+         Season = ifelse(Season == "Oct", paste(mean.Date(c(dmy("17/10/2000"), dmy("26/10/2000")))), Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_medlyn_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Tarvainen (spruce)
+```{r}
+df_tarvainen_spruce <- read_csv(paste(path,"/aci_datapoints/Pieca_abies_tarvainen_etal.csv", sep="")) %>% 
+  dplyr::filter(between(CO2R, 395, 405)) %>%  
+  mutate(dataset = "tarvainen_spruce",
+         Season = ifelse(Season == "Year1", "2009-06-15", Season),
+         Season = ifelse(Season == "Year3", "2009-09-15", Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_tarvainen_spruce %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Han (pine)
+```{r}
+df_han_pine <- read_csv(paste(path,"/aci_datapoints/Pinus_densiflora_han_etal.csv", sep="")) %>% 
+  dplyr::filter(between(CO2S, 330, 350)) %>%
+  mutate(dataset = "han_pine",
+         sample_date = ifelse(Season == "May",paste0("15-", Season, "-2002"), paste0("15-", Season, "-2001")),
+         sample_date = dmy(sample_date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+  mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_han_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, agg_date, pvalue)
+```
+
+### Ellsworth
+```{r}
+df_ellsworth <- read_csv(paste(path,"/aci_datapoints/Pteada_Ellsworth.csv", sep="")) %>% 
+  # Quality control as done by Kumarathunge2019
+  dplyr::filter(between(CO2S, 340, 370)) %>%
+  mutate(dataset = "ellsworth",
+         sample_date = dmy(paste("15-", Date)),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_ellsworth %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Rogers
+```{r}
+df_arctic <- read_csv(paste(path,"/aci_datapoints/Arctic_A-Ci_curves_2012-2015_V2.csv", sep="")) %>% 
+  # Quality control as done by Kumarathunge2019
+  dplyr::filter(between(CO2S, 370, 410)) %>%
+  mutate(dataset = "arctic",
+         sample_date = ymd(Sample_Date),
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>% 
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "USDA_Species_Code")))
+
+df_arctic %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Anna
+```{r}
+df_anna <- read_csv(paste(path,"/aci_datapoints/SPRUCE_3_cohort_ACi_data.csv", sep="")) %>% 
+  dplyr::filter(between(CO2R, 395, 410),
+         Month %in% c(8, 10)) %>% 
+  mutate(dataset = "anna",
+         sample_date = as_date(DOY-1, origin = paste0(Year, "-01-01")),  # Converting DOY and year information into day, -1 needed because as_date takes 0 as 1. January)
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  mutate(fit_opt = purrr::map(.x = data, .f = ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Cohort_age")))
+
+df_anna %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Carter
+```{r}
+df_kelsey <- read_csv(paste(path,"/aci_datapoints/kelsey_cater_Aci_PuertoRico.csv", sep="")) %>% 
+  group_by(Curve) %>%
+  arrange(Obs) %>%
+  slice(1) %>%
+  ungroup %>% 
+  mutate(dataset = "kelsey",
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_kelsey %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Mau
+```{r}
+df_alida <- read_csv(paste(path,"/aci_datapoints/alida_mao_Aci_PuertoRico.csv", sep="")) %>% 
+  group_by(Curve) %>%
+  arrange(Obs) %>%
+  slice(1) %>%
+  ungroup %>% 
+  mutate(dataset = "alida",
+    sample_date = dmy(date),
+    agg_date = floor_date(sample_date, unit = "month")) %>% 
+  group_by(dataset,
+           agg_date) %>% 
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_alida %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, agg_date, pvalue)
+```
+
+### Hikosaka
+```{r}
+df_hikosaka <- read_csv(paste(path,"/aci_datapoints/hikosaka_aci_data.csv", sep="")) %>% 
+  dplyr::filter(between(CO2S, 360, 375),
+         !(Curve %in% c(108:110,115:117))) %>% 
+  mutate(dataset = "hikosaka",
+         Date = ifelse(Date == "2001-06-01", "2001-06-11", Date), 
+         Date = ifelse(Date == "2001-08-01", "2001-08-10", Date), 
+         Date = ifelse(Date == "2001-09-01", "2001-09-20", Date), 
+         Date = ifelse(Date == "2002-06-01", "2002-06-10", Date), 
+         Date = ifelse(Date == "2002-07-01", "2002-07-29", Date), 
+         Date = ifelse(Date == "2002-09-01", "2002-09-28", Date), 
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_hikosaka %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Tarvainen (pine)
+```{r}
+df_tarvainen_pine <- read_csv(paste(path,"/aci_datapoints/scots_pine_tarvainen.csv", sep="")) %>% 
+  dplyr::filter(between(CO2R, 395, 410)) %>% 
+  mutate(dataset = "tarvainen_pine",
+         sample_date = dmy(paste0(Date, "2013")),
+         agg_date = sample_date) %>%
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_tarvainen_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, r2) %>% arrange(pvalue)
+```
+
+## Binding all datasets
+```{r}
+df_obs_opt <- bind_rows(list(
+                         df_alida,
+                         df_anna,
+                         df_arctic,
+                         df_ellsworth,
+                         df_eucface,
+                         df_han_cypress,
+                         df_han_pine,
+                         df_hikosaka,
+                         df_kelly,
+                         df_kelsey,
+                         df_medlyn_eucalypt,
+                         df_medlyn_pine,
+                         df_onoda,
+                         df_sav,
+                         df_slot,
+                         df_tarvainen_pine,
+                         df_tarvainen_spruce,
+                         df_togashi,
+                         df_tribuzi,
+                         df_wang,
+                         df_wtc
+                         )) %>% 
+  
+  ## Quality Check
+  unnest(fit_opt) %>% 
+  drop_na(topt, agg_date) %>% # Exclude NA fits and fits without date
+  nest(fit_opt = c("aopt", "aopt.se", "topt", "topt.se", "b", "b.se", "r2", "s", "pvalue", "fit_method")) %>% 
+  ungroup()
+
+saveRDS(df_obs_opt, "~/data/mscthesis/raw/photom_kumarathunge2019/df_obs_opt_preQC.rds")
+```
+
+
+# Data wrangling for aci fits
+## Setup for fits
+```{r}
+x <- "Ts"
+y <- "lowAs"
+```
+
+
+### Alida
+```{r}
+df_alida <- read_csv(paste0(path,"/aci_fits/alida_mao.csv")) %>%
+  mutate(dataset = "alida",
+        sample_date = dmy(date),
+        agg_date = round_date(sample_date, unit = "week")) %>%
+  group_by(dataset,
+           agg_date) %>% 
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "species")))
+
+df_alida %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, agg_date, pvalue, topt)
+```
+
+### Anna
+```{r}
+df_anna <- read_csv(paste0(path,"/aci_fits/Anna.csv")) %>%
+  mutate(dataset = "anna",
+         sample_date = as_date(DOY-1, origin = paste0(Year, "-01-01")),  # Converting DOY and year information into day, -1 needed because as_date takes 0 as 1. January)
+         agg_date = sample_date) %>%
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+  mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Cohort_age")))
+
+# floor to week
+df_anna %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Rogers
+```{r}
+df_arctic <- read_csv(paste0(path,"/aci_fits/Rogers.csv")) %>%
+  dplyr::filter(maxCi > 400) %>% 
+  mutate(dataset = "arctic",
+         sample_date = ymd(Sample_Date),
+         agg_date = floor_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>% 
+  nest() %>% 
+  mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "USDA_Species_Code")))
+
+df_arctic %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, pvalue, b, aopt, topt, agg_date)
+```
+
+### Ellsworth
+```{r}
+df_ellsworth <- read_csv(paste0(path,"/aci_fits/Ellsworth.csv")) %>% 
+  mutate(dataset = "ellsworth",
+         sample_date = dmy(paste("15-", Date)),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_ellsworth %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, b, aopt, topt, agg_date)
+```
+
+### UWS (eucface)
+```{r}
+df_eucface <- read_csv(paste0(path,"/aci_fits/eucface.csv")) %>%
+  mutate(dataset = "eucface",
+         sample_date = NA,
+         agg_date = sample_date) %>% 
+  dplyr::group_by(dataset,
+          agg_date) %>%
+  tidyr::nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_eucface %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Han (cypress)
+```{r}
+df_han_cypress <- read_csv(paste0(path,"/aci_fits/han_a.csv")) %>%
+  mutate(dataset = "han_cypress",
+         sample_date = my(paste0(Season, "2004")),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_han_cypress %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, agg_date, pvalue)
+```
+
+### Han (pine)
+```{r}
+df_han_pine <- read_csv(paste0(path,"/aci_fits/han_etal.csv")) %>%
+  #dplyr::filter(!(Curve %in% c(5, 9))) %>% 
+  mutate(dataset = "han_pine",
+         sample_date = ifelse(Season == "May",paste0("15-", Season, "-2002"), paste0("15-", Season, "-2001")),
+         sample_date = dmy(sample_date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+          agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_han_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Hikosaka
+```{r}
+df_hikosaka <- read_csv(paste0(path,"/aci_fits/hikosaka.csv")) %>%
+  mutate(dataset = "hikosaka",
+         Date = ifelse(Date == "2001-06-01", "2001-06-11", Date), 
+         Date = ifelse(Date == "2001-08-01", "2001-08-10", Date), 
+         Date = ifelse(Date == "2001-09-01", "2001-09-20", Date), 
+         Date = ifelse(Date == "2002-06-01", "2002-06-10", Date), 
+         Date = ifelse(Date == "2002-07-01", "2002-07-29", Date), 
+         Date = ifelse(Date == "2002-09-01", "2002-09-28", Date), 
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_hikosaka %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, b, aopt, topt, agg_date, pvalue)
+```
+
+### Kelly
+```{r}
+df_kelly <- read_csv(paste0(path,"/aci_fits/kelly.csv")) %>%
+  mutate(dataset = "kelly",
+         Season = ifelse(Season == "SUMMER", "2011-04-07", Season), 
+         Season = ifelse(Season == "WINTER", "2010-07-22", Season),  
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Spp")))
+
+df_kelly %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Carter
+```{r}
+df_kelsey <- read_csv(paste0(path,"/aci_fits/kelsey_cater.csv")) %>%
+  dplyr::filter(Plant_functional_type != "shrub") %>% 
+  mutate(dataset = "kelsey",
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>%
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+ 
+df_kelsey %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Medly (eucalypt)
+```{r}
+df_medlyn_eucalypt <- read_csv(paste0(path,"/aci_fits/tumbarumba.csv")) %>% 
+  mutate(dataset = "medlyn_eucalypt",
+         Leaf.Age = as.factor(Leaf.Age),
+         sample_date = ymd(Date),
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf.Age")))
+
+df_medlyn_eucalypt %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Medlyn (pine)
+```{r}
+df_medlyn_pine <- read_csv(paste0(path,"/aci_fits/medlyn.csv")) %>%
+  dplyr::filter(!(Species == "Tamjoute")) %>%
+  mutate(dataset = "medlyn_pine",
+         Species = ifelse(Species == "Landes", "Pinus pinaster_L", Species),
+         Season = ifelse(Season == "Jul", paste(mean.Date(c(dmy("29/6/1999"), dmy("8/7/1999")))), Season),
+         Season = ifelse(Season == "AugSept", paste(mean.Date(c(dmy("24/8/1999"), dmy("1/9/1999")))), Season),
+         Season = ifelse(Season == "Nov", paste(mean.Date(c(dmy("16/11/1999"), dmy("25/11/1999")))), Season),
+         Season = ifelse(Season == "Jan", paste(mean.Date(c(dmy("25/1/2000"), dmy("1/2/2000")))), Season),
+         Season = ifelse(Season == "Mar", paste(mean.Date(c(dmy("27/3/2000"), dmy("3/4/2000")))), Season),
+         Season = ifelse(Season == "Jun", paste(mean.Date(c(dmy("7/6/2000"), dmy("14/6/2000")))), Season),
+         Season = ifelse(Season == "Oct", paste(mean.Date(c(dmy("17/10/2000"), dmy("26/10/2000")))), Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_medlyn_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, fit_method)
+```
+
+### Onoda
+```{r}
+df_onoda <- read_csv(paste0(path,"/aci_fits/onoda.csv")) %>%
+  dplyr::filter(GrowthCa == "amb",
+         lowAs < 9.5) %>% 
+  mutate(dataset = "onoda",
+         Season = ifelse(Season == "May", paste(mean.Date(c(dmy("08-05-2002"), dmy("12-05-2002")))),  Season),
+         Season = ifelse(Season == "August", paste(mean.Date(c(dmy("29-07-2002"), dmy("06-08-2002")))), Season),
+         Season = ifelse(Season == "Oct", paste(mean.Date(c(dmy("14-10-2002"), dmy("25-10-2002")))), Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf")))
+
+df_onoda %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Savanna
+```{r}
+df_sav <- read_csv(paste0(path,"/aci_fits/cernussac.csv")) %>% 
+  dplyr::filter(Canopy_position == "Canopy") %>% 
+  mutate(dataset = "savanna",
+         sample_date = dmy(Date),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Leaf_number")))
+
+df_sav %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Slot
+```{r}
+df_slot <- read_csv(paste0(path,"/aci_fits/martijn_slot.csv")) %>%
+  dplyr::filter(!(Curve %in% c(133, 135))) %>% 
+  mutate(dataset = "slot",
+         sample_date = dmy(Date),
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_slot %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, r2)
+```
+
+### Tarvainen (pine)
+```{r}
+df_tarvainen_pine <- read_csv(paste0(path,"/aci_fits/scots_pine_tarvainen.csv")) %>%
+  mutate(dataset = "tarvainen_pine",
+         sample_date = dmy(paste0(Date, "2013")),
+         agg_date = round_date(sample_date, unit = "week")) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_tarvainen_pine %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, r2)
+```
+
+### Tarvainen (spruce)
+```{r}
+df_tarvainen_spruce <- read_csv(paste0(path,"/aci_fits/tarvainen_etal.csv")) %>%
+  mutate(dataset = "tarvainen_spruce",
+         Season = ifelse(Season == "Year1", "2009-06-15", Season),
+         Season = ifelse(Season == "Year3", "2009-09-15", Season),
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+df_tarvainen_spruce %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, b, aopt, topt)
+```
+
+### Togashi
+```{r}
+df_togashi <- read_csv(paste0(path,"/aci_fits/togashi.csv")) %>%
+  #dplyr::filter(!(Curve %in% c(42, 43, 41, 45, 44))) %>% 
+  mutate(dataset = "togashi",
+         Season = ifelse(Season == "Summer", "2017-06-21", Season),  # Assumed winter and summer mid in southern hemisphere
+         Season = ifelse(Season == "Winter", "2017-12-21", Season),  # Year of publication assumed, southern hemisphere mid-season assumed
+         sample_date = ymd(Season),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Tree")))
+
+# Species as aggregation level to check goodness of fits
+# have to check if I can infer better dates of measurements instead of winter and summer...
+
+df_togashi %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue) %>% arrange(pvalue)
+```
+
+### Tribuzy
+```{r}
+df_tribuzi <- read_csv(paste0(path,"/aci_fits/tribuzi.csv")) %>%
+  mutate(dataset = "tribuzi",
+         Season = ifelse(Season == "wet", "2005-04-15", Season), # wet/dry but no actual information found
+         Season = ifelse(Season == "dry", "2005-10-15", Season),
+         sample_date = ymd(Season), 
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Species")))
+
+df_tribuzi %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue)
+```
+
+### Wang
+```{r}
+df_wang <- read_csv(paste0(path,"/aci_fits/wang et al.csv")) %>%
+  dplyr::filter(!(Species == "Betula pendula")) %>%
+  mutate(dataset = "wang",
+         sample_date = dmy(ifelse(Date == "Jul-98", "15-07-1994", Date)),
+         agg_date = sample_date) %>% 
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+	mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "none")))
+
+df_wang %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, data, agg_date, pvalue, r2)
+```
+
+### UWS (whole-tree-chamber)
+```{r}
+# WTC datasets
+df_wtc <- bind_rows(read_csv(paste0(path,"/aci_fits/wtc1.csv")) %>% 
+                      mutate(dataset = "wtc1",
+                             Date = ymd(ifelse(Season == "January", "2010-01-01", "2010-11-01"))) %>%
+                             #Date = NA) %>% 
+                      dplyr::filter(CO2_Treat == "Ambient",
+                             Water_treat == "wet"),
+                    
+                    read_csv(paste0(path,"/aci_fits/wtc2.csv")) %>%
+                       mutate(dataset = "wtc2",
+                              Date = ymd(Date)) %>%  
+                       dplyr::filter(Temp.treat == "ambient"),
+                    
+                     read_csv(paste0(path,"/aci_fits/wtc3.csv")) %>%
+                       mutate(dataset = "wtc3",
+                              Date = dmy(Date)) %>%  
+                       dplyr::filter(Treatment == "Ambient"),
+                    
+                     read_csv(paste0(path,"/aci_fits/wtc4.csv")) %>%
+                       mutate(dataset = "wtc3",
+                              Date = dmy(Date)) %>%  
+                       dplyr::filter(Temp_Treatment == "ambient")) %>% 
+  mutate(dataset = "wtc",
+         sample_date = Date,
+         # agg_date = round_date(sample_date, unit = "month")) %>%
+  			 agg_date = round_date(sample_date, unit = "week")) %>%
+  group_by(dataset,
+           agg_date) %>%
+  nest() %>% 
+mutate(fit_opt = purrr::map(data, ~fit_nonlinear_topt(dat = .x, x = x, y = y, random = "Chamber")))
+
+df_wtc %>% unnest(cols = "fit_opt") %>% dplyr::select(dataset, fit_method, b, agg_date, pvalue) %>% arrange(pvalue)
+```
+
+## Binding all df
+```{r}
+df_275_opt <- bind_rows(list(
+                         df_alida,
+                         df_anna,
+                         df_arctic,
+                         df_ellsworth,
+                         df_eucface,
+                         df_han_cypress,
+                         df_han_pine,
+                         df_hikosaka,
+                         df_kelly,
+                         df_kelsey,
+                         df_medlyn_eucalypt,
+                         df_medlyn_pine,
+                         df_onoda,
+                         df_sav,
+                         df_slot,
+                         df_tarvainen_pine,
+                         df_tarvainen_spruce,
+                         df_togashi,
+                         df_tribuzi,
+                         df_wang,
+                         df_wtc
+                         )) %>%
+  
+  ## Quality Check
+  unnest(fit_opt) %>% 
+  drop_na(topt, agg_date) %>% # Exclude NA fits and fits without date
+  nest(fit_opt = c("aopt", "aopt.se", "topt", "topt.se", "b", "b.se", "r2", "s", "pvalue", "fit_method"))%>% 
+  ungroup()
+
+saveRDS(df_275_opt, "~/data/mscthesis/raw/photom_kumarathunge2019/df_275_opt_preQC.rds")
+```
+
+# Quality Control
+## Summary before QC
+```{r}
+cat("\n Fixed Ci: --------------------------------------")
+pval <- 0.1
+all  <- df_275_opt %>% nrow
+sign <- df_275_opt %>% unnest(cols = "fit_opt") %>% dplyr::filter(pvalue < pval) %>% nrow()
+cat("\n p-values below", pval*100,"%: ", sign, "/", all, "| which is", round(sign/all, 2)*100, "% \n")
+
+cat("\n Free Ci: --------------------------------------")
+pval <- 0.1
+all  <- df_obs_opt %>% nrow
+sign <- df_obs_opt %>% unnest(cols = "fit_opt") %>% dplyr::filter(pvalue < pval) %>% nrow()
+cat("\n p-values below", pval*100,"%: ", sign, "/", all, "| which is", round(sign/all, 2)*100, "% \n")
+```
+
+## Create plots pre QC
+```{r}
+for (subset in c("obs", "275")) {
+	if (subset == "obs") {
+		x <- "Tleaf"
+		y <- "Photo"
+	} else {
+		x <- "Ts"
+		y <- "lowAs"
+	}
+
+	df_1 <- readRDS(paste0("~/data/mscthesis/raw/photom_kumarathunge2019/df_", subset, "_opt_preQC.rds"))
+
+	for (i in 1:nrow(df_1)) {
+
+		cat('\014')
+		cat(paste0(subset, " | ", round(i / nrow(df_1) * 100), "% completed \n "))
+
+		df_i <- df_1 %>%
+			slice(i) %>%
+			unnest(c(data, fit_opt)) %>%
+			mutate(sample_date = as.factor(sample_date))
+
+		site       <- df_i$dataset[1]
+		date       <- df_i$agg_date[1]
+		fit_method <- df_i$fit_method[1]
+		r2         <- round(df_i$r2[1], 2)
+		pval       <- round(df_i$pvalue[1], 2)
+		tc_opt     <- round(df_i$topt[1], 2)
+		tc_opt_se  <- round(df_i$topt.se[1], 2)
+		
+		df_i$y <- df_i[[y]]
+		df_i$x <- df_i[[x]]
+		
+		df_2 <- tibble(
+			tleaf = seq(0, 50, 0.1),
+			anet = df_i$aopt[1] - ( df_i$b[1] * ( tleaf - df_i$topt[1]) ^ 2))
+		
+		# For easy plotting:
+		coef_1 <- df_i[1, ]
+
+		
+		# Plot it
+		p <- ggplot() +
+			geom_point(data = df_i, aes(x = x, y = y, color = sample_date)) +
+			geom_line( data = df_2, aes(x = tleaf, y = anet)) +
+			geom_point(data = coef_1,aes(x = topt, y = aopt), color = "red") + # shape = 18, size = 4
+			geom_errorbarh(data = coef_1, aes(y = aopt, xmin = topt - topt.se, xmax = topt + topt.se), color = "red") +
+			geom_errorbar( data = coef_1, aes(x = topt, ymin = aopt - aopt.se, ymax = aopt + aopt.se), color = "red") +
+			xlim(0, 50) +
+			ylim(0, 30) +
+			ylab(bquote("Net Assimilation ["~mu~mol ~CO[2]~ m^-2~s^-1~"]")) +
+			xlab(bquote("Leaf Temperature [°C]")) +
+			labs(color = "Sampling Date",
+					 title = paste0(subset, " | ", site, " | ", date, " | tc_opt: ", tc_opt, " +- ", tc_opt_se),
+					 subtitle = paste0(fit_method, " | p = ", pval, " | r2 = ", r2)) +
+			scale_color_brewer(palette = "Dark2")
+
+		# Save it
+		ggsave(paste0("~/data/mscthesis/raw/photom_kumarathunge2019/pre_QC/", subset, "_", site, "_", date, ".png"), p, width = 8, height = 8, units = "in")
+	}
+}
+
+```
+
+## QC Selection
+```{r}
+# Criteria for exclusion based on visual inspection:
+## (1): Non-sensible fit compared to data points, e.g.:
+##      - Parabola misses optimal temperature that is well-shown by data points
+##      - Fit is defined by one outlier
+##      - Ecophysiologically impossible optmal temperature
+##
+## (2): Non-sensible distribution of data points
+##      - Zero assimilation rate over multiple leaf temperatures (estimate is middle of temperature range)
+##      - Too narrow range in leaf temperatures for sensible fit
+
+# Fixed Ci conditions
+df_275_qc <- readRDS("~/data/mscthesis/raw/photom_kumarathunge2019/df_275_opt_preQC.rds") %>% 
+	dplyr::filter(!(dataset == "alida" & agg_date == "2014-08-24"), # (1)
+								!(dataset == "anna" & agg_date == "2011-07-14"), # (1)
+								!(dataset == "anna" & agg_date == "2011-10-20"), # (1)
+								!(dataset == "anna" & agg_date == "2013-04-23"), # (2)
+								!(dataset == "anna" & agg_date == "2013-04-24"), # (2)
+								!(dataset == "arctic" & agg_date == "2012-08-05"), # (1)
+								!(dataset == "ellsworth" & agg_date == "1998-12-15"), # (2)
+								!(dataset == "han_pine" & agg_date == "2001-11-15"), # (1)
+								!(dataset == "hikosaka" & agg_date == "2001-08-01"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-04"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-06"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-11"), # (2)
+								!(dataset == "kelsey" & agg_date == "2015-07-12"), # (2)
+								!(dataset == "kelsey" & agg_date == "2015-07-20"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-21"), # (2)
+								!(dataset == "medlyn_eucalypt" & agg_date == "2001-11-18"), # (2)
+								!(dataset == "medlyn_eucalypt" & agg_date == "2002-02-17"), # (2) # TODO: Could be revised by extracting fit-defining outlier
+								!(dataset == "medlyn_eucalypt" & agg_date == "2002-05-05"), # (1)
+								!(dataset == "medlyn_pine" & agg_date == "1999-07-03"), # (2)
+								!(dataset == "medlyn_pine" & agg_date == "1999-11-20"), # (1)
+								!(dataset == "medlyn_pine" & agg_date == "2000-01-28"), # (1)
+								!(dataset == "onoda" & agg_date == "2002-08-02"), # (1)
+								!(dataset == "slot" & agg_date == "2016-11-27"), # (1)
+								!(dataset == "slot" & agg_date == "2016-12-11"), # (1)
+								!(dataset == "slot" & agg_date == "2016-12-18"), # (2)
+								!(dataset == "slot" & agg_date == "2016-12-25"), # (2)
+								!(dataset == "togashi" & agg_date == "2017-06-21"), # (2)
+								!(dataset == "togashi" & agg_date == "2017-12-21"), # (2)
+								!(dataset == "tribuzi" & agg_date == "2005-10-15"), # (1)
+								!(dataset == "wtc" & agg_date == "2011-09-11") # (1)
+								)
+
+# Free Ci conditions
+df_obs_qc <- readRDS("~/data/mscthesis/raw/photom_kumarathunge2019/df_obs_opt_preQC.rds") %>% 
+	dplyr::filter(!(dataset == "anna" & agg_date == "2013-08-03"), # (2) TODO: Could be revised by checking why two curves are visible
+								!(dataset == "anna" & agg_date == "2013-08-04"), # (2)
+								!(dataset == "kelsey" & agg_date == "2015-07-03"), # (2)
+								!(dataset == "kelsey" & agg_date == "2015-07-09"), # (2)
+								!(dataset == "kelsey" & agg_date == "2015-07-15"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-17"), # (1)
+								!(dataset == "kelsey" & agg_date == "2015-07-21"), # (2)
+								!(dataset == "medlyn_eucalypt" & agg_date == "2001-11-18"), # (2)
+								!(dataset == "onoda" & agg_date == "2002-08-02"), # (1)
+								!(dataset == "tarvainen_pine" & agg_date == "2013-08-09"), # (1) TODO: Could be included despite high s.e. and bad fit-metrics
+								!(dataset == "wtc" & agg_date == "2011-02-06"), # (2) Could be revised by excluding linearly decreasing outliers
+								!(dataset == "wtc" & agg_date == "2014-01-12"), # (2)
+								!(dataset == "wtc" & agg_date == "2016-10-02"), # (2)
+								)
+```
+
+# Saving final dataframes
+```{r}
+# Attach metadata
+metainfo_k19 <- read_csv("~/data/mscthesis/final/metainfo_k19.csv")
+
+df_275_qc <- df_275_qc %>%
+    rename(data_raw = data) %>% 
+    mutate(data_raw = purrr::map(data_raw, ~ .x %>% mutate_all(as.character))) %>% 
+    left_join(metainfo_k19, by = "dataset") %>% 
+    group_by(dataset, agg_date, data_raw, fit_opt) %>% 
+    nest() %>% 
+    ungroup() %>% 
+    mutate(tc_opt_obs = purrr::map_dbl(fit_opt, ~dplyr::select(., topt) %>% pull)) %>% 
+    rename(metainfo = data,
+           sitename = dataset,
+           date     = agg_date) %>% 
+    dplyr::select(sitename, date, tc_opt_obs, fit_opt, metainfo, data_raw)
+
+df_obs_qc <- df_obs_qc %>%
+    rename(data_raw = data) %>% 
+    mutate(data_raw = purrr::map(data_raw, ~ .x %>% mutate_all(as.character))) %>% 
+    left_join(metainfo_k19, by = "dataset") %>% 
+    group_by(dataset, agg_date, data_raw, fit_opt) %>% 
+    nest() %>% 
+    ungroup() %>% 
+    mutate(tc_opt_obs = purrr::map_dbl(fit_opt, ~dplyr::select(., topt) %>% pull)) %>% 
+    rename(metainfo = data,
+           sitename = dataset,
+           date     = agg_date) %>% 
+    dplyr::select(sitename, date, tc_opt_obs, fit_opt, metainfo, data_raw)
+    
+saveRDS(df_275_qc, "~/data/mscthesis/final/df_275_opt_postQC.rds")
+saveRDS(df_obs_qc, "~/data/mscthesis/final/df_obs_opt_postQC.rds")
+```
+
+## Summary post QC
+```{r}
+cat("\n QC: --------------------------------------------",
+		"\n Fits removed from fixed Ci dataset:", nrow(df_275_opt) - nrow(df_275_qc),
+		"\n Fits removed from free  Ci dataset:", nrow(df_obs_opt) - nrow(df_obs_qc), "\n")
+
+cat("\n Fixed Ci: --------------------------------------")
+pval <- 0.1
+all  <- df_275_qc %>% nrow
+sign <- df_275_qc %>% unnest(cols = "fit_opt") %>% dplyr::filter(pvalue < pval) %>% nrow()
+cat("\n p-values below", pval*100,"%: ", sign, "/", all, "| which is", round(sign/all, 2)*100, "% \n")
+
+cat("\n Free Ci: --------------------------------------")
+pval <- 0.1
+all  <- df_obs_qc %>% nrow
+sign <- df_obs_qc %>% unnest(cols = "fit_opt") %>% dplyr::filter(pvalue < pval) %>% nrow()
+cat("\n p-values below", pval*100,"%: ", sign, "/", all, "| which is", round(sign/all, 2)*100, "% \n")
+```
+
+## Create plots post QC
+```{r}
+if (F) {
+    for (subset in c("obs", "275")) {
+    	if (subset == "obs") {
+    		x <- "Tleaf"
+    		y <- "Photo"
+    	} else {
+    		x <- "Ts"
+    		y <- "lowAs"
+    	}
+    
+    	df_1 <- readRDS(paste0("~/data/mscthesis/df_", subset, "_opt_postQC.rds"))
+    
+    	for (i in 1:nrow(df_1)) {
+    
+    		cat('\014')
+    		cat(paste0(subset, " | ", round(i / nrow(df_1) * 100), "% completed \n "))
+    
+    		df_i <- df_1 %>%
+    			slice(i) %>%
+    			unnest(c(data, fit_opt)) %>%
+    			mutate(sample_date = as.factor(sample_date))
+    
+    		site       <- df_i$dataset[1]
+    		date       <- df_i$agg_date[1]
+    		fit_method <- df_i$fit_method[1]
+    		r2         <- round(df_i$r2[1], 2)
+    		pval       <- round(df_i$pvalue[1], 2)
+    		tc_opt     <- round(df_i$topt[1], 2)
+    		tc_opt_se  <- round(df_i$topt.se[1], 2)
+    		
+    		df_i$y <- df_i[[y]]
+    		df_i$x <- df_i[[x]]
+    		
+    		df_2 <- tibble(
+    			tleaf = seq(0, 50, 0.1),
+    			anet = df_i$aopt[1] - ( df_i$b[1] * ( tleaf - df_i$topt[1]) ^ 2))
+    		
+    		# For easy plotting:
+    		coef_1 <- df_i[1, ]
+    
+    		
+    		# Plot it
+    		p <- ggplot() +
+    			geom_point(data = df_i, aes(x = x, y = y, color = sample_date)) +
+    			geom_line( data = df_2, aes(x = tleaf, y = anet)) +
+    			geom_point(data = coef_1,aes(x = topt, y = aopt), color = "red") + # shape = 18, size = 4
+    			geom_errorbarh(data = coef_1, aes(y = aopt, xmin = topt - topt.se, xmax = topt + topt.se), color = "red") +
+    			geom_errorbar( data = coef_1, aes(x = topt, ymin = aopt - aopt.se, ymax = aopt + aopt.se), color = "red") +
+    			xlim(0, 50) +
+    			ylim(0, 30) +
+    			ylab(bquote("Net Assimilation ["~mu~mol ~CO[2]~ m^-2~s^-1~"]")) +
+    			xlab(bquote("Leaf Temperature [°C]")) +
+    			labs(color = "Sampling Date",
+    					 title = paste0(subset, " | ", site, " | ", date, " | tc_opt: ", tc_opt, " +- ", tc_opt_se),
+    					 subtitle = paste0(fit_method, " | p = ", pval, " | r2 = ", r2)) +
+    			scale_color_brewer(palette = "Dark2")
+    
+    		# Save it
+    		ggsave(paste0("~/data/mscthesis/final/plots/extracted_topt_postQC", subset, "_", site, "_", date, ".png"), p, width = 8, height = 8, units = "in")
+    	}
+    }
+}
+```

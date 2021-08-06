@@ -1,0 +1,292 @@
+---
+title: "Analysis of Instantaneous P-Model Setups"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	error = F,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE
+)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+
+# Sanity check for analytical and numerical vcmax25
+## Get evaluation and forcing data
+
+```{r}
+load("~/data/rsofun_benchmarking/df_drivers_topt_v3.4.Rdata")
+df_drivers_k19     <- df_drivers_topt
+df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
+```
+
+```{r fig.height=3, fig.width=6}
+## Vcmax25 Models
+## Prescribed (from Kumarathunge 2019, Table 2)
+settings    <- get_settings()
+settings$rpmodel_inst$method_vcmax25 <- "prescribed"
+df_accl_fix <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+
+## Analytical
+settings$rpmodel_inst$method_vcmax25 <- "rpm_accl"
+df_accl_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+
+## Numerical
+settings$rpmodel_accl$method_optim   <- "numerical"
+df_accl_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+
+## Instantaneous Model
+p_inst_fix <- df_accl_fix %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
+p_inst_ana <- df_accl_ana %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
+p_inst_num <- df_accl_num %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plots
+p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
+p2 <- p_inst_ana$plot + ggtitle("Analytically derived Vcmax25") + labs(caption = NULL)
+p3 <- p_inst_num$plot + ggtitle("Numerically derived Vcmax25") + labs(caption = NULL)
+
+p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect")
+```
+
+
+# T_opt: Predictions - Observations
+## Formulations
+### Vcmax, Jmax: Kattge - Kumarathunge
+```{r}
+## Kumarathunge
+settings   <- get_settings()
+p_inst_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Kattge
+settings$rpmodel_inst$method_ftemp <- "kattge07"
+p_inst_k07 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plots
+p_inst_k19$plot + ggtitle("Kumarathunge")
+p_inst_k07$plot + ggtitle("Kattge")
+```
+
+
+### Jmax limtation: Smith - Farquhar
+```{r}
+## Smith
+settings   <- get_settings()
+p_inst_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Farquhar
+settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
+p_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plots
+p_inst_s37$plot + ggtitle("Smith")
+p_inst_f89$plot + ggtitle("Farquhar")
+```
+
+### Respiration
+#### Scaling of Rd25
+```{r}
+## Atkin - Fixed ratio
+settings   <- get_settings()
+p_inst_rd25_a15 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Kumarathunge - Acclimated ratio
+settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
+p_inst_rd25_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plots
+p_inst_rd25_a15$plot + ggtitle("Fixed - Atkin")
+p_inst_rd25_k19$plot + ggtitle("Acclimated - Kumarathunge")
+```
+
+
+#### Temperature response
+```{r fig.height=6}
+## Heskel
+settings   <- get_settings()
+p_inst_rd_h16 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Arrhenius
+settings$rpmodel_inst$method_rd <- "arrhenius"
+p_inst_rd_arr <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Q10
+settings$rpmodel_inst$method_rd <- "q10"
+p_inst_rd_q10 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plots
+p_h16 <- p_inst_rd_h16$plot + ggtitle("Heskel")
+p_arr <- p_inst_rd_arr$plot + ggtitle("Arrhenius")
+p_q10 <- p_inst_rd_q10$plot + ggtitle(paste0("Q10 = ", settings$rpmodel_inst$q10))
+
+p_h16 + p_q10 + p_arr + guide_area() + plot_layout(guides = "collect")
+```
+
+
+## Other setups
+### Optimal and fixed ci
+```{r}
+## Fixed ci at 275 ppm
+settings <- get_settings()
+settings$rpmodel_inst$method_ci <- 275
+# settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
+df_evaluation_k19_275  <- readRDS("~/data/mscthesis/final/df_275_opt_postQC.rds")
+
+
+## Run model
+df_inst_275 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19_275)
+p_inst_275 <- df_inst_275 %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) %>% plot_obs_vs_pred_mina(.)
+
+
+## Plot
+p_inst_275$plot + ggtitle("Fixed ci at 275 ppm")
+```
+
+
+### K19 setup
+```{r}
+## farquhar, rd arrhenius, accl rd25, q10 = 1.2?
+```
+
+
+### Simulated PPFD setup
+```{r}
+## Best setup
+settings <- get_settings()
+settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
+
+
+## Run model
+t_start <- Sys.time()
+df_inst_best <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+t_dur <- Sys.time() - t_start
+p_inst_best <- df_inst_best %>% plot_obs_vs_pred_mina(.)
+
+
+## Plot
+cat("Computational time for analytical vcmax25 and best model: ", round(t_dur, 2), "s")
+p_inst_best$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16")
+```
+
+
+## Best Model
+```{r}
+## Best setup
+settings <- get_settings()
+settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
+
+
+## Run model
+t_start <- Sys.time()
+df_inst_best <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+t_dur <- Sys.time() - t_start
+p_inst_best <- df_inst_best %>% plot_obs_vs_pred_mina(.)
+
+
+## Plot
+p_inst_best$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16")
+```
+
+### MNE subset only
+```{r}
+## Best setup
+settings <- get_settings()
+settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
+
+
+## Run model and get subset
+df_inst_best <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+p_inst_best_mne <- df_inst_best %>% plot_obs_vs_pred_mina(.)
+
+
+## Plot
+p_inst_best_mne$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16 | MNE only")
+```
+
+## Open Question: Smith - Farquhar
+
+- Numerical jmax worsens fit of farquhar because estimated jmax is lower which leads to underestimation of predicted tc_opt. Analytical and prescribed jmax thus create a better fit.
+- Using reported ppfd-conditions for experiment leads to a nice fit for farquhar including the 1:1 line in the slope's CI but has a strongly reduced r^2
+
+```{r, fig.height=8, fig.width=5.5}
+## Best setup
+settings <- get_settings()
+settings$rpmodel_inst$method_rd25  <- "kumarathunge19"
+# settings$rpmodel_accl$method_optim <- "numerical"
+# settings$rpmodel_accl$method_vcmax25 <- "prescribed"
+
+
+## Best Smith
+df_best_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+p_best37 <- df_best_s37 %>% plot_obs_vs_pred_mina()
+
+
+## Best Farquhar
+settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
+df_best_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+p_best_f89 <- df_best_f89 %>% plot_obs_vs_pred_mina()
+
+
+## Plot
+p1 <- p_best37$plot   + ggtitle("Best Smith")
+p2 <- p_best_f89$plot + ggtitle("Best Farquhar")
+
+p1 / p2 + plot_layout(guides = "collect")
+```
+
+
+
+# T_opt - T_growth
+### Best Smith
+```{r}
+df_best_s37 %>% plot_topt_vs_tgrowth()
+df_inst_best %>% plot_topt_vs_tgrowth()
+
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$energy_balance <- "on"
+
+df <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+p <- df %>% plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+
+p$plot
+```
+
+
+### Best Farquhar
+```{r}
+df_best_f89 %>% plot_topt_vs_tgrowth()
+```
+
+### Numerical
+```{r}
+settings <- get_settings()
+df_ana_ <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+df_ana_ %>% plot_topt_vs_tgrowth()
+
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$energy_balance <- "on"
+df_num_ <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+df_num_ %>% plot_topt_vs_tgrowth()
+```
