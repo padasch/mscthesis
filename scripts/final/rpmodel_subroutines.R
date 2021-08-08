@@ -522,7 +522,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         return_all = TRUE
     )
     
-    return(varlist)
+    return(out_optim)
 }
 
 # .............................................................................
@@ -790,8 +790,6 @@ calc_tc_leaf_final <- function(tc_air    = 25,
     # Get optimized tc_leaf
     
     # Call optimize()
-    
-    
     sol_optimize <- tryCatch(
         {
             sol_optimize <- optimize(maximize_this_tc_leaf,
@@ -816,11 +814,11 @@ calc_tc_leaf_final <- function(tc_air    = 25,
                                      c_cost    = c_cost)
         },
         warning = function(cond){
-            # print("There was a warning")
+            message("There was a warning")
             return(NA)
         },
         error = function(cond){
-            # print("This message will not be printed.")
+            message("This message will not be printed.")
             return(NA)
         },
         finally = {
