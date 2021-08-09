@@ -37,11 +37,14 @@ rpmodel <- function(
 ){
   
   ## DEBUG ZONE ####
-  ## Overwriting kphio input to check for its effect:
+  ### Overwriting kphio input to check for its effect:
   if (F) {
     if (method_jmaxlim == "wang17" | method_jmaxlim == "smith19") {kphio <- 0.085}
     if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {kphio <- 0.275}
   }
+  
+  ### Adding check for numerical convergence to output:
+  opt_convergence <- NA
   
   
   ## Check arguments ####
@@ -173,7 +176,6 @@ rpmodel <- function(
         # Carboxylation rate
         ftemp_vcmax       <- calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
         vcmax             <- iabs * out_lue_vcmax$vcmax_unitiabs
-        # vcmax             <- kphio_accl * ppfd * out_optchi$mjoc * calc_mprime( out_optchi$mj ) / out_optchi$mj ## Testing formulation from rsofun directly, works better than via lue()-function
         vcmax25           <- vcmax / ftemp_vcmax
         ac                <- calc_ac(ci, gammastar, kmm, vcmax, model = method_optim)$ac
         
@@ -209,7 +211,10 @@ rpmodel <- function(
         if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
         if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
         
-        out_num <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_growth_leaf,
+      
+      if (T) { # Working for vcmax predictions
+        
+        final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_growth_leaf,
                                                   patm = patm,
                                                   co2 = co2,
                                                   vpd = vpd,
@@ -218,13 +223,46 @@ rpmodel <- function(
                                                   kphio = kphio,
                                                   method_jmaxlim_inst = method_jmaxlim)
         
-        chi     <- out_num$chi_mine
-        ci      <- out_num$ci_mine
-        gs      <- out_num$gs_mine    / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        vcmax   <- out_num$vcmax_mine / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        jmax    <- out_num$jmax_mine  / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        ## Check if optimization converged
+        # message(final_opt$out_optim$message)
+        opt_convergence <- final_opt$out_optim$convergence
+      
+        ## Extract optimized parameters
+        varlist_optim <- final_opt$varlist
+        
+        chi     <- varlist_optim$chi_mine
+        ci      <- varlist_optim$ci_mine
+        xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
+        gs      <- varlist_optim$gs_mine    / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        vcmax   <- varlist_optim$vcmax_mine / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        jmax    <- vcmax * 1.67
+        # jmax    <- varlist_optim$jmax_mine  / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
         vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
         jmax25  <- jmax  /  calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+        
+      } else {
+        # TRIAL LEB ####
+        varlist_optim <- minimize_costs_gs_vcmax_jmax(tc_leaf = tc_growth_leaf,
+                                                patm = patm,
+                                                co2 = co2,
+                                                vpd = vpd,
+                                                ppfd = ppfd,
+                                                kphio = kphio,
+                                                method_jmaxlim_inst = method_jmaxlim)
+        
+        chi     <- varlist_optim$chi_mine
+        ci      <- varlist_optim$ci_mine
+        xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
+        gs      <- varlist_optim$gs_mine    / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        vcmax   <- varlist_optim$vcmax_mine / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        jmax    <- varlist_optim$jmax_mine  / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
+        jmax25  <- jmax  /  calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+        
+      }
+      
+        
+
     }
     
     ## Output definition ####
@@ -246,8 +284,9 @@ rpmodel <- function(
         jmax              = jmax,
         jmax25            = jmax25,
         kphio             = kphio_accl,
-        tc_growth_leaf    = tc_growth_leaf
-        # rd              = rd
+        tc_growth_leaf    = tc_growth_leaf,
+        # rd              = rd,
+        opt_convergence   = opt_convergence
     )
     
     return( out )
@@ -461,7 +500,7 @@ calc_chi_c4 <- function(){
 run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes default settings from get_settings()
                              df_drivers,        # Options: Input of drivers for sites, needs: sitename (chr) and forcing (nested tibble, see rsofun v3.3 setup)
                              df_evaluation,     # Options: Input of evaluation sitename, date and target value: sitename | date | target_var
-                             target_var = "toremve"){       # Options: Character specifying target_var
+                             target_var = "to_remove"){       # TODO: to remove Options: Character specifying target_var
   
   
   ## Getting default settings if none are given:
@@ -490,7 +529,8 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
       jmax = NA,
       jmax25 = NA,
       kphio = NA,
-      tc_growth_leaf = NA) %>% 
+      tc_growth_leaf = NA,
+      opt_convergence = NA) %>% 
     right_join(df_evaluation) %>% 
     drop_na(ppfd) # To make sure, no rows with NA's enter loop below
   
@@ -533,12 +573,13 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     df_rpmodel_accl$jmax25[row]  <- df_loop$jmax25
     df_rpmodel_accl$kphio[row]   <- df_loop$kphio
     df_rpmodel_accl$tc_growth_leaf[row]   <- df_loop$tc_growth_leaf
+    df_rpmodel_accl$opt_convergence[row]   <- df_loop$opt_convergence
   }
   
   ## Return final dataframe, ready for instantaneous P-Model
   out <- df_rpmodel_accl %>%
     ## Get nested acclimated data
-    dplyr::select(sitename, date, chi, ci, xi, gs, vcmax, vcmax25, jmax, jmax25, kphio, tc_growth_leaf) %>% 
+    dplyr::select(sitename, date, names(df_loop)) %>% 
     nest(rpm_accl = c(-sitename, -date, -tc_growth_leaf)) %>% 
     
     ## Get nested forcing data (note: tc_home is saved in siteinfo)

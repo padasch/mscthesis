@@ -86,7 +86,7 @@ df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_c
 
 
 ## Smith37
-```{r}
+```{r fig.height=6, fig.width=8}
 ## Analytical
 settings <- get_settings()
 df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
@@ -100,13 +100,15 @@ p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset =
 
 
 ## Plots
-p_ana_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p_num_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p1 <- p_ana_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p2 <- p_num_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
+
+p1/p2
 ```
 
 
 ## Farquhar89
-```{r}
+```{r fig.height=6, fig.width=8}
 ## Analytical
 settings <- get_settings()
 settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib*4
@@ -122,8 +124,10 @@ p_num_f89  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_f89, dataset =
 
 
 ## Plots
-p_ana_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p_num_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p1 <- p_ana_f89 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p2 <- p_num_f89 + xlim(0, 4e-4) + ylim(0, 4e-4)
+
+p1 / p2
 ```
 
 
@@ -133,22 +137,23 @@ p_num_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
 settings <- get_settings()
 t_start <- Sys.time()
 df_dummy <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-t_ana <- Sys.time() - t_start
+t_ana <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
 
 
 ## Numerical, no EB
 settings$rpmodel_accl$method_optim <- "numerical"
 t_start <- Sys.time()
 df_noeb <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-t_noeb <- Sys.time() - t_start
+t_noeb <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
 p_noeb  <- plot_two_long_df(df_x = make_long_df(df_in = df_noeb, dataset = "no_energy_balance"), df_x_dataset = "no_energy_balance", df_y = make_df_evaluation_p21_long(df_in = df_noeb), df_y_dataset = "peng21")
 
 
 ## EB via plantecophys
 settings$rpmodel_accl$energy_balance <- "on"
+settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib * 1.5
 t_start <- Sys.time()
 df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-t_eb_pl <- Sys.time() - t_start
+t_eb_pl <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
 p_eb_pl  <- plot_two_long_df(df_x = make_long_df(df_in = df_eb_pl, dataset = "eb_plantecophys"), df_x_dataset = "eb_plantecophys", df_y = make_df_evaluation_p21_long(df_in = df_eb_pl), df_y_dataset = "peng21")
 
 
@@ -157,21 +162,18 @@ t_start <- Sys.time()
 settings$rpmodel_accl$method_eb <- "tealeaves"
 t_start <- Sys.time()
 df_eb_te <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-t_eb_te <- Sys.time() - t_start
+t_eb_te <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
 p_eb_te  <- plot_two_long_df(df_x = make_long_df(df_in = df_eb_te, dataset = "eb_tealeaves"), df_x_dataset = "eb_tealeaves", df_y = make_df_evaluation_p21_long(df_in = df_eb_te), df_y_dataset = "peng21")
 
 
 ## Computing time (run in console directly is quicker than in chunk!)
-cat(" Computation durations: ")
-cat("\n _______________________")
-cat("\n Analytical Model: ")
-t_ana
-cat("\n Numerical Model: ")
-t_noeb
-cat("\n Planteco Model: ")
-t_eb_pl
-cat("\n Tealeaves Model: ")
-t_eb_te
+cat(" Computation time: \n",
+    "_______________________________ \n",
+    "Analytical Model:      ", ifelse(t_ana > 1, paste0(t_ana, " min"), paste0(t_ana*60, " sec")), "\n",
+    "Numerical Model:       ", ifelse(t_noeb > 1, paste0(t_noeb, " min"), paste0(t_noeb*60, " sec")), "\n",
+    "Num. + Planteco Model: ", ifelse(t_eb_pl > 1, paste0(t_eb_pl, " min"), paste0(t_eb_pl*60, " sec")), "\n",
+    "Num. + tealeaves Model:", ifelse(t_eb_te > 1, paste0(t_eb_te, " min"), paste0(t_eb_te*60, " sec")), "\n")
+
 
 
 ## Plots
@@ -294,12 +296,12 @@ df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21,
 p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
 ```
 
-```{r, fig.width=8, fig.height=2}
+```{r, fig.width=8, fig.height=6}
 ## Plots
-p1_s37 <- p_ana_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p2_s37 <- p_num_s37 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p1_s37 <- p_ana_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p2_s37 <- p_num_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
 
-p1_s37 + p2_s37
+p1_s37 / p2_s37
 ```
 
 

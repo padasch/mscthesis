@@ -385,7 +385,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
                                            jmax_start = 20,
                                            method_jmaxlim_inst = "smith37") {
     
-    optimise_this_tcleaf_vcmax_jmax <- function( par, args, iabs, kphio, beta, c_cost, method_jmaxlim_inst, maximize=FALSE, return_all=FALSE ){
+    optimise_this_tcleaf_vcmax_jmax <- function( par, args, iabs, kphio, beta = 146, c_cost, method_jmaxlim_inst, maximize=FALSE, return_all=FALSE ){
         
         ## Parameters to be optimized
         vcmax <- par[1]
@@ -468,6 +468,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         
         ## Take minimum of the two assimilation rates and maximum of the two ci
         assim <- min( a_j, a_c )
+        # assim <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j)
         ci <- max(ci_c, ci_j)
         
         ## only cost ratio is defined. for this here we need absolute values. Set randomly
@@ -487,8 +488,26 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         # print(par)
         # print(net_assim)
         
-        if (return_all){
-            return(tibble(vcmax_mine = vcmax, jmax_mine = jmax, gs_mine = gs, ci_mine = ci, chi_mine = ci / ca, a_c_mine = a_c, a_j_mine = a_j, assim = assim, ci_c_mine = ci_c, ci_j_mine = ci_j, cost_transp = cost_transp, cost_vcmax = cost_vcmax, cost_jmax = cost_jmax, net_assim = net_assim, method_jmaxlim_inst = method_jmaxlim_inst))
+        if (return_all) {
+            return(
+                tibble(
+                    vcmax_mine = vcmax,
+                    jmax_mine = jmax,
+                    gs_mine = gs,
+                    ci_mine = ci,
+                    chi_mine = ci / ca,
+                    a_c_mine = a_c,
+                    a_j_mine = a_j,
+                    assim = assim,
+                    ci_c_mine = ci_c,
+                    ci_j_mine = ci_j,
+                    cost_transp = cost_transp,
+                    cost_vcmax = cost_vcmax,
+                    cost_jmax = cost_jmax,
+                    net_assim = net_assim,
+                    method_jmaxlim_inst = method_jmaxlim_inst
+                )
+            )
         } else {
             return( net_assim )
         }
@@ -522,7 +541,10 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         return_all = TRUE
     )
     
-    return(out_optim)
+    out <- list(out_optim = out_optim,
+                varlist   = varlist)
+    
+    return(out)
 }
 
 # .............................................................................
@@ -543,7 +565,8 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     ## Edits to make function runnable within rpmodel
     ## Correct input units to fit calculations below
     PPFD <- PPFD * 10^6 / (3600*24)               # mol/m2/d to umol/m2/s
-    gs   <- gs   * 10^-6 * Patm / (3600*24)       # mol/m2/d/Pa to ppm mol/m2/s
+    gs   <- gs * (esat(Tair, Patm / 1000) - VPD)  # mol/m2/d/Pa to ppm mol/m2/d
+    gs   <- gs   / (3600*24)                      # mol/m2/d    to ppm mol/m2/s
     Patm <- Patm / 1000                           # Pa to kPa
     VPD  <- VPD  / 1000                           # Pa to kPa
     
@@ -709,6 +732,10 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                   beta      = 146,
                                   c_cost    = 0.41) {
     
+    
+    ## Output: difference in tc_leaf assumed for gs and tc_leaf from energy balance
+    
+    ## 1: Get optimal gs, vcmax and jmax at given tc_leaf
     varlist_opt_tcleaf <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
                                                          patm = patm,
                                                          co2 = co2,
@@ -721,47 +748,48 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                                          method_jmaxlim_inst = method_jmaxlim_inst,
                                                          vcmax_start = 20,
                                                          gs_start = 0.5,
-                                                         jmax_start = 20)
-    gs <- varlist_opt_tcleaf$gs_mine
+                                                         jmax_start = 20)$varlist
+    
+    ## 2. Get optimal gs for water from gs for CO2 (divide by 1.6) for EB:
+    gs_water <- varlist_opt_tcleaf$gs_mine / 1.6
     
     if (method_eb == "plantecophys") {
-        ## Via plantecophys energy balance
-        tc_leaf_x <- calc_tc_leaf_from_tc_air(tc_air = tc_air,
-                                              # gs       = 0.15 / 101325,
-                                              gs       = gs,
+        ## 2.1: Via plantecophys energy balance
+        tc_leaf_leb <- calc_tc_leaf_from_tc_air(tc_air = tc_air,
+                                              gs       = gs_water,
                                               wind     = wind,
                                               wleaf    = wleaf,
                                               stoma_r  = stoma_r,
                                               leaf_abs = leaf_abs)
         
     } else if (method_eb == "tealeaves") {
-        ## Via tealeaves energy balance
+        ## 2.2: Via tealeaves energy balance
         
         # Get relative humidity from vpd:
-        RH <- (100 - ((vpd * 100) / esat(tc_air, patm/100))) / 100
+        RH <- (100 - ((vpd) / esat(tc_air, patm/1000))) / 100
         
-        # Get leaf parameters
+        # Get leaf parameters:
         leaf_par <- make_leafpar(
             replace = list(
-                g_sw = set_units(gs, "mol/m^2/d/Pa")))
+                g_sw = set_units(gs_water, "mol/m^2/s/Pa")))
         
-        # Get environmental parameters
+        # Get environmental parameters:
         enviro_par <- make_enviropar(
             replace = list(
                 T_air = set_units(tc_air + 273.15, "K"),
                 RH    = as_units(RH),
                 P     = set_units(patm, "Pa")))
         
-        # Get physical constants
+        # Get physical constants:
         constants  <- make_constants()
         
-        # Get tc_leaf
-        tc_leaf_x <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
+        # Get tc_leaf:
+        tc_leaf_leb <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
             set_units("degree_Celsius") %>% drop_units()
     }
     
     # Get difference between tc_leaf and tc_leaf_x
-    eps <- (tc_leaf_x - tc_leaf)^2
+    eps <- (tc_leaf_leb - tc_leaf)^2
     
     return(eps)
 }
@@ -802,7 +830,7 @@ calc_tc_leaf_final <- function(tc_air    = 25,
                                      co2       = co2,
                                      patm      = patm,
                                      vpd       = vpd,
-                                     kphio		 = kphio,
+                                     kphio     = kphio,
                                      toggles   = toggles,
                                      wind      = wind,
                                      wleaf     = wleaf,
@@ -814,11 +842,11 @@ calc_tc_leaf_final <- function(tc_air    = 25,
                                      c_cost    = c_cost)
         },
         warning = function(cond){
-            message("There was a warning")
+            message("calc_tc_leaf_final(): Warning! Did not converge.")
             return(NA)
         },
         error = function(cond){
-            message("This message will not be printed.")
+            message("calc_tc_leaf_final(): Error!")
             return(NA)
         },
         finally = {
@@ -826,10 +854,12 @@ calc_tc_leaf_final <- function(tc_air    = 25,
         })
     
     if (length(sol_optimize) == 1) {
-        return (tc_air)
+        return (tc_leaf <- tc_air)
+    } else {
+        tc_leaf <- sol_optimize$minimum
     }
     
-    return(sol_optimize$minimum)
+    return(tc_leaf)
 }
 
 # PLOTTING FUNCTIONS ####
@@ -1031,7 +1061,8 @@ make_long_df <- function(df_in,
                          dataset  = "dataset") {
     
     df_out <- df_in %>%
-        unnest(v_unnest) %>%
+        unnest(v_unnest[1]) %>%
+        unnest(v_unnest[2]) %>% # Done step-by-step to avoid "Error: Incompatible lengths: 4, 2."
         pivot_longer(cols = v_vars, names_to = "variable", values_to = "values") %>% 
         dplyr::select(sitename, date, variable, values)
     
@@ -1070,12 +1101,14 @@ plot_two_long_df <- function(df_x,
 
 get_instant_vcmax_jmax <- function(df_in, ftemp_method = "kumarathunge19") {
     
+    names_v <- df_in$rpm_accl[[1]] %>% names()
+    
     df_out <- df_in %>%
         unnest(c(rpm_accl, forcing)) %>%
         mutate(tc_leaf_dat = purrr::map_dbl(data_raw, ~ mean(.$tleaf)),
                jmax    = jmax25  * calc_ftemp_inst_jmax(tc_leaf_dat, tc_growth_air, tc_home, method_ftemp = ftemp_method),
                vcmax   = vcmax25 * calc_ftemp_inst_vcmax(tc_leaf_dat, tc_growth_air, method_ftemp = ftemp_method)) %>% 
-        nest(rpm_accl = c("chi", "ci", "xi", "gs", "vcmax", "vcmax25", "jmax", "jmax25", "kphio")) %>% 
+        nest(rpm_accl = any_of(names_v)) %>% 
         dplyr::select(sitename, date, rpm_accl) %>% 
         left_join(df_in %>% dplyr::select(-rpm_accl))
     
@@ -1095,7 +1128,7 @@ if (F) { # F to avoid calculation when sourcing
     kphio		  <- 0.05
     fapar     <- 1
     method_jmaxlim_inst <- "smith37"
-    method_eb <- "plantecophys"
+    method_eb <- "tealeaves"
     beta      <- 146
     c_cost    <- 0.41
     

@@ -1,19 +1,20 @@
 # Optimization of leaf energy balance and plant cost balance ####
 # Optimal gs, vcmax, jmax ####
 
-calc_opt_gs_vcmax_jmax <-function(par,
-                                  tc_leaf,
-                                  tc_air,
-                                  ppfd,
-                                  fapar,
-                                  co2,
-                                  patm,
-                                  vpd,
-                                  kphio,
-                                  method_jmaxlim_inst,
-                                  maximize = FALSE,
-                                  return_all = FALSE,
-                                  units = "per-s") {
+calc_optimal_gs_vcmax_jmax <- function(par,
+                                       tc_leaf,
+                                       tc_air,
+                                       ppfd,
+                                       fapar = 1,
+                                       co2,
+                                       patm,
+                                       vpd,
+                                       kphio,
+                                       beta = 146.0,
+                                       method_jmaxlim_inst,
+                                       maximize = FALSE,
+                                       return_all = FALSE,
+                                       units_out  = "per-s") {
         
     
     ## 1: Parameters to be optimized:
@@ -27,21 +28,12 @@ calc_opt_gs_vcmax_jmax <-function(par,
     ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
     ca        <- co2_to_ca(co2, patm)
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F)
-    
-    ## 3: Adjust ppfd units for optimization to work from /s to /d
-    if (units == "per-d") {
-        ppfd  <- ppfd  * 3600 * 24
-        vcmax <- vcmax * 3600 * 24
-        jmax  <- jmax  * 3600 * 24
-        gs    <- gs    * 3600 * 24
-    }
-    
-    iabs <- ppfd * fapar
+    iabs      <- ppfd * fapar
     
     
-    ## 4: Calculate assimilation rates with to-be-optimized jmax, vcmax and gs:
+    ## 3: Calculate assimilation rates with to-be-optimized jmax, vcmax and gs:
     
-    ## 4.1: Electron transport is limiting
+    ## 3.1: Electron transport is limiting
     ## Solve quadratic equation system using: A(Fick's Law) = A(Jmax Limitation)
     ## This leads to a quadratic equation:
     ## A * ci^2 + B * ci + C  = 0
@@ -84,7 +76,7 @@ calc_opt_gs_vcmax_jmax <-function(par,
         c_cost <- 0.053 # As estimated by Smith et al. (2019)
     }
     
-    ## 4.2: Rubisco is limiting
+    ## 4: Rubisco is limiting
     ## Solve Eq. system
     ## A = gs (ca- ci)
     ## A = Vcmax * (ci - gammastar)/(ci + Kmm)
@@ -103,11 +95,11 @@ calc_opt_gs_vcmax_jmax <-function(par,
     
     ## 5. Take minimum of the two assimilation rates and maximum of the two ci
     ci <- max(ci_c, ci_j)
-    # a_gross <- min( a_j, a_c ) # Original approach using min()
-    a_gross <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j) # Altenrative approach using hyperbolic minumum to avoid discontinuity (see Duursma et al (2015), Eq. (5))
+    a_gross <- min( a_j, a_c ) # Original approach using min()
+    # a_gross <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j) # Altenrative approach using hyperbolic minumum to avoid discontinuity (see Duursma et al (2015), Eq. (5))
     
     ## 6. Calculate costs as defined by the criteria: (1.6*ns_star*gs*vpd + beta*vcmax)/Ac + jmax*c/Aj = min! # TODO -> fix formulation
-    cost_transp <- 1.6 * ns_star * gs / patm * vpd
+    cost_transp <- 1.6 * ns_star * gs * vpd
     cost_vcmax  <- beta * vcmax
     cost_jmax   <- c_cost * jmax
     
@@ -121,14 +113,14 @@ calc_opt_gs_vcmax_jmax <-function(par,
     if (return_all){
         
         ## Turn per-day units back into per-second
-        if (units == "per-d") {
-            vcmax <- vcmax         / (3600 * 24)
-            jmax <- jmax           / (3600 * 24)
-            gs <- gs               / (3600 * 24)
-            a_c <- a_c             / (3600 * 24)
-            a_j <- a_j             / (3600 * 24)
-            a_gross <- a_gross     / (3600 * 24)
-            net_assim <- net_assim / (3600 * 24)
+        if (units_out == "per-s") {
+            vcmax <- vcmax         / (3600 * 24) # Final unit: [mol/m2/s]
+            jmax <- jmax           / (3600 * 24) # Final unit: [mol/m2/s]
+            gs <- gs               / (3600 * 24) # Final unit: [mol/m2/s/Pa]
+            a_c <- a_c             / (3600 * 24) # Final unit: [mol/m2/s]
+            a_j <- a_j             / (3600 * 24) # Final unit: [mol/m2/s]
+            a_gross <- a_gross     / (3600 * 24) # Final unit: [mol/m2/s]
+            net_assim <- net_assim / (3600 * 24) # Final unit: [-]
         }
         
         ## Output
@@ -156,78 +148,59 @@ calc_opt_gs_vcmax_jmax <-function(par,
     }
 }
 # .............................................................................
-minimize_costs_gs_vcmax_jmax <- function(par,
-                                         tc_leaf,
+minimize_costs_gs_vcmax_jmax <- function(tc_leaf,
                                          patm,
                                          co2,
                                          vpd,
                                          ppfd,
-                                         fapar,
                                          kphio,
                                          method_jmaxlim_inst,
-                                         vcmax_start = 50e-6,
-                                         jmax_start  = 100e-6,
-                                         gs_start    = 30e-3
+                                         vcmax_start = NA,
+                                         jmax_start  = NA,
+                                         gs_start    = NA
                                          ) {
     
-    # optimr::optimr(
-    #     
-    #     ## Optimization inputs:
-    #     par        = c( vcmax_start,       jmax_start , gs_start       ),
-    #     lower      = c( vcmax_start*10^-2, jmax_start*10^-2 , gs_start*10^-2 ),
-    #     upper      = c( vcmax_start*10^2,  jmax_start*10^2 , gs_start*10^2  ),
-    #     fn         = calc_opt_gs_vcmax_jmax,
-    #     method     = "L-BFGS-B",
-    #     control    = list( maxit = 1000, pgtol = T),
-    #     
-    #     ## Function inputs:
-    #     tc_leaf    = tc_leaf,
-    #     patm       = patm,
-    #     co2        = co2,
-    #     vpd        = vpd,
-    #     ppfd       = ppfd,
-    #     fapar      = fapar,
-    #     kphio      = kphio,
-    #     method_jmaxlim_inst = method_jmaxlim_inst,
-    #     units      = "per-s",
-    #     maximize   = TRUE)
+    ## TODO: Input for optimization has to be in per-day to work properly:
+    ppfd        <- ppfd * 3600 * 24
+    vcmax_start <- 20
+    jmax_start  <- 20
+    gs_start    <- 0.3
     
-    (out_optim <- optim(
-        
+    
+    ## Get optimal parameters (TODO: Output order of magnitude depends on lower/upper boundaries OoM)
+    out_optim <- optimr::optimr(
+
         ## Optimization inputs:
-        par        = c( vcmax_start,       jmax_start,       gs_start       ),
-        lower      = c( vcmax_start*10^-3, jmax_start*10^-3, gs_start*10^-3 ),
-        upper      = c( vcmax_start*10^3,  jmax_start*10^3,  gs_start*10^3  ),
-        fn         = calc_opt_gs_vcmax_jmax,
-        method     = "L-BFGS-B", # "Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN",
-        # control    = list(trace = 0, pgtol = T),
-        control    = list(maxit = 10000),
-        
+        par        = c( vcmax_start,       jmax_start      , gs_start),
+        lower      = c( vcmax_start*10^-4, jmax_start*10^-4, gs_start*10^-4 ),
+        upper      = c( vcmax_start*10^4,  jmax_start*10^4 , gs_start*10^4  ),
+        fn         = calc_optimal_gs_vcmax_jmax,
+        method     = "L-BFGS-B",
+        control    = list(maxit = 1000),
+
         ## Function inputs:
         tc_leaf    = tc_leaf,
         patm       = patm,
         co2        = co2,
         vpd        = vpd,
         ppfd       = ppfd,
-        fapar      = fapar,
         kphio      = kphio,
         method_jmaxlim_inst = method_jmaxlim_inst,
-        units      = "per-d",
-        maximize   = T
-        ))
+        maximize   = TRUE)
+
     
-    (optimized_par <- calc_opt_gs_vcmax_jmax(
-        # par        = c( vcmax_start, jmax_start, gs_start),
-                                            par        = out_optim$par,
-                                            tc_leaf    = tc_leaf,
-                                            patm       = patm,
-                                            co2        = co2,
-                                            vpd        = vpd,
-                                            ppfd       = ppfd,
-                                            fapar      = fapar,
-                                            kphio      = kphio,
-                                            method_jmaxlim_inst = method_jmaxlim_inst,
-                                            return_all = T))
+    optimized_par <- calc_optimal_gs_vcmax_jmax(par        = out_optim$par,
+                                                tc_leaf    = tc_leaf,
+                                                patm       = patm,
+                                                co2        = co2,
+                                                vpd        = vpd,
+                                                ppfd       = ppfd,
+                                                kphio      = kphio,
+                                                method_jmaxlim_inst = method_jmaxlim_inst,
+                                                units_out  = "per-s",
+                                                return_all = T)
+    
+    return(optimized_par)
     
 }
 
@@ -262,10 +235,10 @@ LeafEnergyBalance <- function(Tleaf, # This parameter is optimized
     # LeafAbs       [0, 1]
     
     ## Input is in SI units, adjustments needed:
-    gs   <- gs * 10^-6 * Patm * 1.6  # mol C/m2/s/Pa to mol H2O/m2/s
-    PPFD <- PPFD * 10^6              # mol/m2/s      to umol/m2/s
-    Patm <- Patm / 1000
-    VPD  <- VPD  / 1000
+    gs   <- gs * (esat(Tair, patm / 1000) - VPD)  # mol H20/m2/s/Pa to mol H2O/m2/s by multiplying with water vapor pressure
+    PPFD <- PPFD * 10^6  # mol/m2/s to umol/m2/s
+    Patm <- Patm / 1000  # Pa to kPa
+    VPD  <- VPD  / 1000  # Pa to kPa
     
     # Output
     returnwhat <- match.arg(returnwhat)
@@ -365,110 +338,154 @@ LeafEnergyBalance <- function(Tleaf, # This parameter is optimized
 }
 
 # .............................................................................
-tleaf_from_eb <- function(tc_air,
-                          gs,
-                          vpd,
-                          patm,
-                          ppfd) {
+diff_tcleaf_in_and_tcleaf_eb <- function(tc_leaf, # This parameter is optimized
+                                         tc_air,
+                                         ppfd,
+                                         co2,
+                                         patm,
+                                         vpd,
+                                         kphio,
+                                         method_jmaxlim_inst,
+                                         method_eb = "plantecophys") {
     
-    ## Output: tc_leaf as suggested by energy balance when tc_air and gs are given
-    
-    sol_optimr <-	optimr::optimr(
-        # Parameter boundaries to optimize within:
-        par       = 15,
-        lower     = max(1, 15 - tc_air), # OLD: 0 
-        upper     = 15 + tc_air, # OLD: 40 
-        
-        # Function to optimize and its inputs:
-        fn        = LeafEnergyBalance,
-        Tair      = tc_air,   
-        gs        = gs,       
-        VPD       = vpd,      
-        Patm      = patm,     
-        PPFD      = ppfd,     
-        
-        # Optimr settings:
-        method    = "L-BFGS-B",
-        control   = list( maxit = 10000, maximize = TRUE )
-    )
-    
-    return(sol_optimr$par)
-}
-
-# .............................................................................
-diff_tleaf_in_and_tleaf_eb <- function(tc_leaf, # This parameter is optimized
-                                       tc_air,
-                                       ppfd,
-                                       fapar,
-                                       co2,
-                                       patm,
-                                       vpd,
-                                       kphio,
-                                       method_jmaxlim_inst,
-                                       method_eb) { 
 
                                            
     ## Output: difference in tc_leaf assumed for gs and tc_leaf from energy balance
     
     ## 1: Get optimal gs, vcmax and jmax at given tc_leaf
-    varlist_opt_tcleaf <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
-                                                         patm = patm,
-                                                         co2 = co2,
-                                                         vpd = vpd,
-                                                         ppfd = ppfd,
-                                                         fapar = fapar,
-                                                         kphio = kphio,
-                                                         beta = beta,
-                                                         c_cost = c_cost,
-                                                         method_jmaxlim_inst = method_jmaxlim_inst,
-                                                         vcmax_start = 20,
-                                                         gs_start = 0.5,
-                                                         jmax_start = 20)
-    gs <- varlist_opt_tcleaf$gs_mine
+    optim_vars <- minimize_costs_gs_vcmax_jmax(tc_leaf,
+                                               patm,
+                                               co2,
+                                               vpd,
+                                               ppfd,
+                                               kphio,
+                                               method_jmaxlim_inst)
+    
+    ## 2. Get optimal gs for water for calculating tc_leaf via energy balance:
+    gs_water <- optim_vars$gs_mine / 1.6
     
     if (method_eb == "plantecophys") {
-        ## Via plantecophys energy balance
-        tc_leaf_x <- calc_tc_leaf_from_tc_air(tc_air = tc_air,
-                                              # gs       = 0.15 / 101325,
-                                              gs       = gs,
-                                              wind     = wind,
-                                              wleaf    = wleaf,
-                                              stoma_r  = stoma_r,
-                                              leaf_abs = leaf_abs)
+        ## 2.1: Via plantecophys energy balance
+        
+        tc_leaf_leb <- optimr::optimr(
+                                       # Parameter boundaries to optimize within:
+                                       par       = 15,
+                                       lower     = max(1, 15 - tc_air), # OLD: 0
+                                       upper     = 15 + tc_air, # OLD: 40
+                                       # Function to optimize and its inputs:
+                                       fn        = LeafEnergyBalance,
+                                       Tair      = tc_air,
+                                       gs        = gs_water,
+                                       VPD       = vpd,
+                                       Patm      = patm,
+                                       PPFD      = ppfd,
+                                       # Optimr settings:
+                                       method    = "L-BFGS-B",
+                                       control   = list(maxit = 10000, maximize = TRUE))$par
         
     } else if (method_eb == "tealeaves") {
-        ## Via tealeaves energy balance
+        ## 2.2: Via tealeaves energy balance
         
         # Get relative humidity from vpd:
-        RH <- (100 - ((vpd * 100) / esat(tc_air, patm/100))) / 100
+        RH <- (100 - ((vpd) / esat(tc_air, patm/1000))) / 100
         
-        # Get leaf parameters
+        # Get leaf parameters:
         leaf_par <- make_leafpar(
             replace = list(
-                g_sw = set_units(gs, "mol/m^2/d/Pa")))
+                g_sw = set_units(gs_water, "mol/m^2/s/Pa")))
         
-        # Get environmental parameters
+        # Get environmental parameters:
         enviro_par <- make_enviropar(
             replace = list(
                 T_air = set_units(tc_air + 273.15, "K"),
                 RH    = as_units(RH),
                 P     = set_units(patm, "Pa")))
         
-        # Get physical constants
+        # Get physical constants:
         constants  <- make_constants()
         
-        # Get tc_leaf
-        tc_leaf_x <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
+        # Get tc_leaf:
+        tc_leaf_leb <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
             set_units("degree_Celsius") %>% drop_units()
     }
     
-    # Get difference between tc_leaf and tc_leaf_x
-    eps <- (tc_leaf_x - tc_leaf)^2
+    # 3: Get squared difference between from assumed tc_leaf and actual tc_leaf
+    eps <- (tc_leaf_leb - tc_leaf)^2
     
     return(eps)
 }
-
-
+# .............................................................................
+calc_tc_leaf_from_tc_air <- function(tc_air,
+                                     ppfd,
+                                     patm,
+                                     co2,
+                                     vpd,
+                                     kphio,
+                                     method_jmaxlim_inst,
+                                     method_eb) {
+      
+    
+    ## IN DEV:
+    sol_optimize <- optimize(diff_tcleaf_in_and_tcleaf_eb,
+                             interval  = c(max(tc_air - 15, 1), tc_air + 15),
+                             tc_air    = tc_air,
+                             ppfd      = ppfd,
+                             co2       = co2,
+                             patm      = patm,
+                             vpd       = vpd,
+                             kphio		 = kphio,
+                             method_jmaxlim_inst = method_jmaxlim_inst,
+                             method_eb = method_eb)
+    
+    return(sol_optimize$minimum)
+    
+  ## TODO: OPTIM() AND OPTIMR() BELOW CRASH FOR SOME REASON...
+    
+    # out_optim <- optimr::optimr(
+    #     
+    #     ## Optimization inputs:
+    #     par        = tc_air,
+    #     lower      = 1,
+    #     upper      = 40,
+    #     fn         = diff_tcleaf_in_and_tcleaf_eb,
+    #     method     = "L-BFGS-B",
+    #     control    = list(maxit = 1000),
+    #     
+    #     ## Function inputs:
+    #     tc_air = tc_air,
+    #     ppfd = ppfd,
+    #     patm = patm,
+    #     co2 = co2,
+    #     vpd = vpd,
+    #     kphio = kphio,
+    #     method_jmaxlim_inst = method_jmaxlim_inst,
+    #     method_eb = method_eb)
+    #     
+    # out_optim <- optim(
+    # 
+    #     ## Optimization inputs:
+    #     par        = tc_air,
+    #     lower      = 1,
+    #     upper      = 40,
+    #     fn         = diff_tcleaf_in_and_tcleaf_eb,
+    #     method     = "L-BFGS-B",
+    #     control    = list(maxit = 1000),
+    # 
+    #     ## Function inputs:
+    #     tc_air = tc_air,
+    #     ppfd = ppfd,
+    #     patm = patm,
+    #     co2 = co2,
+    #     vpd = vpd,
+    #     kphio = kphio,
+    #     method_jmaxlim_inst = method_jmaxlim_inst,
+    #     method_eb = method_eb)
+    
+    
+    
+    
+    }
+    
 
 
 # .............................................................................
@@ -490,31 +507,83 @@ if (F) {
     beta <- 146 # -
     c_cost <- 0.103 # -
     method_jmaxlim_inst <- "smith37"
+    method_eb <- "plantecophys"
+    method_eb <- "tealeaves"
+    
+    ## Get actual data:
+    df_test <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds") %>% 
+      leftjoin()
+    dplyr::select(forcing) %>% unnest(forcing) %>% mutate(vcmax = NA, jmax = NA, gs = NA)
+    
+    ## Checking optimal gs, vcmax, jmax
+    for (r in 1:nrow(df_test)) {
+      opt <- minimize_costs_gs_vcmax_jmax(tc_leaf = temp,
+                                              patm,
+                                              co2,
+                                              vpd,
+                                              ppfd,
+                                              kphio,
+                                              method_jmaxlim_inst)
+      )
+      
+    }
+    
     
     
     ## Function calls
-    tleaf_from_eb(tc_air, gs, vpd, patm, ppfd)
+    calc_tcleaf_from_eb(tc_air, gs*patm, vpd, patm, ppfd)
     
-    calc_opt_gs_vcmax_jmax(
+    calc_optimal_gs_vcmax_jmax(
         par        = c(vcmax, jmax, gs),
         tc_leaf    = tc_leaf,
         patm       = patm,
         co2        = co2,
         vpd        = vpd,
         ppfd       = ppfd,
-        fapar      = fapar,
         kphio      = kphio,
         method_jmaxlim_inst = method_jmaxlim_inst,
         maximize   = TRUE,
         return_all = T
     )
-     
+    
+    minimize_costs_gs_vcmax_jmax(tc_leaf,
+                                 patm,
+                                 co2,
+                                 vpd,
+                                 ppfd,
+                                 kphio,
+                                 method_jmaxlim_inst)$gs_mine
     
     
-    ## Trying to visualize this stuff
-    ## 3 Axis: gs, vcmax, jmax
-    ## Color: net_assim
+    diff_tcleaf_in_and_tcleaf_eb(tc_air,
+                                 ppfd,
+                                 patm,
+                                 co2,
+                                 vpd,
+                                 kphio,
+                                 method_jmaxlim_inst,
+                                 method_eb = "plantecophys")
     
+    calc_tc_leaf_from_tc_air(tc_air = 30,
+                             ppfd,
+                             patm,
+                             co2,
+                             vpd,
+                             kphio,
+                             method_jmaxlim_inst,
+                             method_eb = "tealeaves")
     
-    
+    ## Plots
+    df_test <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds") %>%
+      dplyr::select(forcing) %>%
+      unnest(forcing) %>%
+      mutate(tc_leaf = purrr::map_dbl(., ~calc_tc_leaf_from_tc_air(tc_air,
+                                                ppfd,
+                                                patm,
+                                                co2,
+                                                vpd,
+                                                kphio,
+                                                method_jmaxlim_inst,
+                                                method_eb = "tealeaves")))
+ 
 }

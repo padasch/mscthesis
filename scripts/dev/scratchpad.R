@@ -378,44 +378,146 @@ test$con
 # 08/08/2021 ####
 ## Trying to get that 3d plot optimization of gs vcmax and jmax ####
 
-x <- seq(1, 100, length.out = 100)
-y <- sqrt(x) * x/2
-z <- x^3/y/10
+## Testing plotly
+library(plotly)
+fig <- plot_ly(z = ~volcano)
+fig <- fig %>% add_surface()
 
-f <- (x+z+y)/x
+fig
 
-
-
-
-
-
-
-
-
+fig <- plot_ly(mtcars, x = ~wt, y = ~hp, z = ~qsec, color = ~am, colors = c('#BF382A', '#0C4B8E'))
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(scene = list(xaxis = list(title = 'Weight'),
+                                   yaxis = list(title = 'Gross horsepower'),
+                                   zaxis = list(title = '1/4 mile time')))
 
 
+## Testing my own plotly
+df <- tibble(x = seq(1, 100, length.out = 100),
+             y = sqrt(x) * x/2,
+             z <- x^3/y/10,
+             f <- (x+z+y)/x)
 
+fig <- plot_ly(df, x = ~x, y = ~y, z = ~z, color = ~f)
 
-
-
-
-
-
-
-
+x <- array(rep(1, 365*5*4), dim=c(365, 5, 4))
 
 
 
-
-
+## Hyperbolix minimum formulaion ####
+-QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j)
 
 
 
 
 
+# 09/08/2021 ####
+## Subset where convergence worked vs. all data ####
+## Get data
+## Analytical
+settings <- get_settings()
+settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib * 1.5
+df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21")
 
 
+## Numerical - all data
+settings$rpmodel_accl$method_optim   <- "numerical"
+settings$rpmodel_accl$method_eb   <- "on"
+df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
 
 
+## Numerical - only where convergence worked
+names_v <- df_num_s37$rpm_accl[[1]] %>% names()
+df_num_s37_x <- df_num_s37 %>% unnest(rpm_accl) %>% dplyr::filter(opt_convergence == 0) %>% nest(rpm_accl = any_of(names_v))
+p_num_s37_x  <- plot_two_long_df(
+  df_x = make_long_df(df_in = df_num_s37_x, dataset = "numerical_s37"),
+  df_x_dataset = "numerical_s37",
+  df_y = make_df_evaluation_p21_long(df_in = df_num_s37_x),
+  df_y_dataset = "peng21"
+)
 
 
+## Plots
+p_ana_s37 + xlim(0, 4e-4) + ylim(0, 4e-4) + ggtitle("Analytic")
+p_num_s37 + xlim(0, 4e-4) + ylim(0, 4e-4) + ggtitle("Including non-convergence")
+p_num_s37_x + xlim(0, 4e-4) + ylim(0, 4e-4) + ggtitle("Without non-convergence")
+
+## Results
+#' Taking only the subset of converged data points does not show any significant
+#' change in estimated parameters vcmax and jmax, thus this check can be left-out
+#' but it should still be mentioned that the numerical solutions does not always
+#' converge which hampers the predictions
+
+
+## Trying heatmap plot from rbeni ####
+df_t <- df_ana_s37 %>%
+  mutate(tc_growth_air = purrr::map(forcing, ~ dplyr::select(., tc_growth_air)),
+         tc_home = purrr::map(forcing, ~ dplyr::select(., tc_home))) %>% 
+  unnest(c(tc_growth_air, tc_home)) %>% 
+  mutate(tc_leaf   = purrr::map_dbl(data_raw, ~ mean(.$tleaf)),
+         jmax      = purrr::map_dbl(data_raw, ~ mean(.$jmax))  * 10 ^-6,
+         vcmax     = purrr::map_dbl(data_raw, ~ mean(.$vcmax)) * 10 ^-6,
+         jmax25    = jmax  / calc_ftemp_inst_jmax(tc_leaf, tc_growth_air, tc_home, method_ftemp = "kumarathunge19"),
+         vcmax25   = vcmax / calc_ftemp_inst_vcmax(tc_leaf, tc_growth_air, method_ftemp = "kumarathunge19")) %>% 
+  rename(jmax_obs = jmax,
+         vcmax_obs = vcmax,
+         jmax25_obs = jmax25,
+         vcmax25_obs = vcmax25) %>% 
+  # unnest(rpm_accl)
+  unnest(rpm_accl) %>% 
+  dplyr::filter(opt_convergence == 0)
+
+df_t %>% ggplot(aes(vcmax, vcmax_obs)) +
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  geom_abline() + 
+  xlim(0, 4e-4) + 
+  ylim(0, 4e-4)
+
+library(rbeni)
+heatscatter(df_t$vcmax, df_t$vcmax_obs, xlab = "Modelled", ylab = "Observed", ggplot = TRUE)  +
+  geom_abline() +
+  geom_smooth(data = df_t, aes(vcmax, vcmax_obs), method= "lm")
+
+
+## Testing performance of EB ####
+## EB via plantecophys
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$energy_balance <- "on"
+df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+
+## EB via tealeaves
+settings$rpmodel_accl$method_eb <- "tealeaves"
+df_eb_te <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+(t_eb_te <- difftime(Sys.time(), t_start, units = "min") %>% round(2))
+
+p_eb_te  <- plot_two_long_df( df_x = make_long_df(df_in = df_eb_te, dataset = "eb_tealeaves"), df_x_dataset = "eb_tealeaves", df_y = make_df_evaluation_p21_long(df_in = df_eb_te), df_y_dataset = "peng21")
+
+p_eb_te + xlim(0, 4e-4) + ylim(0, 4e-4) + ggtitle("tealeaves")
+
+
+## Do analytic and numeric show same chi behavior? ####
+
+df_1 <- df_ana_s37 %>% unnest(c(rpm_accl, forcing))
+df_2 <- df_num_s37 %>% unnest(c(rpm_accl, forcing))
+df_3 <- df_eb_te %>% unnest(c(rpm_accl, forcing))
+df_4 <- df_eb_pl %>% unnest(c(rpm_accl, forcing))
+
+
+plot(df_1$chi, df_2$chi, ylim = c(0, 1), xlim = c(0,1))
+abline(0, 1)
+
+plot(df_1$chi, df_4$chi, ylim = c(0, 1), xlim = c(0,1))
+abline(0, 1)
+
+plot(df_1$chi, df_3$chi, ylim = c(0, 1), xlim = c(0,1))
+abline(0, 1)
+
+plot(df_4$tc_growth_leaf, df_3$tc_growth_air, ylim = c(0, 40), xlim = c(0, 40))
+abline(0, 1)
+
+plot(df_3$tc_growth_leaf, df_3$tc_growth_air, ylim = c(0, 40), xlim = c(0, 40))
+abline(0, 1)
