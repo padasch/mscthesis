@@ -36,7 +36,7 @@ df_accl  <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, d
 
 
 ## Select variables from acclimated rsofun
-vars_ <- c("vcmax", "jmax", "vcmax25", "jmax25", "tc_growth_air", "kphio", "xi")
+vars_ <- c("vcmax", "jmax", "vcmax25", "jmax25", "tc_growth_air", "kphio", "xi") # "vcmax", "jmax", "vcmax25", "jmax25", "tc_growth_air", "kphio", "xi"
 df_rsof <- df_accl %>%
     dplyr::select(sitename, date) %>% 
     left_join(readRDS("~/data/mscthesis/final/rsofun_v3.4_topt_k19_tau30.rds") %>% unnest(data)) %>% 
@@ -55,14 +55,17 @@ df_rpm <- df_accl %>%
     
 ## Connect and plot both data frames
 left_join(df_rsof, df_rpm) %>% 
-    # dplyr::filter(variable != "jmax",
-    #               variable != "vcmax",) %>% 
+    dplyr::filter(variable != "jmax",
+                  variable != "vcmax",) %>%
     ggplot() +
     aes(x = rsofun, y = rpmodel) +
     geom_abline() +
     geom_point() +
     geom_smooth(method = "lm") +
-    facet_wrap(~variable, scales = "free", ncol = 2)
+    facet_wrap( ~ variable, scales = "free", ncol = 2) +
+    ggpmisc::stat_poly_eq(formula = y ~ x,
+                          aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+                          parse = TRUE)
 ```
 
 
@@ -84,7 +87,6 @@ df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_c
            data_raw = data)
 ```
 
-
 ## Smith37
 ```{r fig.height=6, fig.width=8}
 ## Analytical
@@ -94,14 +96,15 @@ p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset
     
 
 ## Numerical
+settings <- get_settings()
 settings$rpmodel_accl$method_optim   <- "numerical"
 df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
 
 
 ## Plots
-p1 <- p_ana_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
-p2 <- p_num_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p1 <- p_ana_s37 + xlim(0, 10e-4) + ylim(0, 10e-4)
+p2 <- p_num_s37 + xlim(0, 10e-4) + ylim(0, 10e-4)
 
 p1/p2
 ```
@@ -111,21 +114,22 @@ p1/p2
 ```{r fig.height=6, fig.width=8}
 ## Analytical
 settings <- get_settings()
-settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib*4
 settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
 df_ana_f89   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
 p_ana_f89    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89"), df_x_dataset = "analytical_f89", df_y = make_df_evaluation_p21_long(df_in = df_ana_f89), df_y_dataset = "peng21")
     
 
 ## Numerical
-settings$rpmodel_accl$method_optim   <- "numerical"
+settings <- get_settings()
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+settings$rpmodel_accl$method_optim <- "numerical"
 df_num_f89 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 p_num_f89  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89"), df_x_dataset = "numerical_f89", df_y = make_df_evaluation_p21_long(df_in = df_num_f89), df_y_dataset = "peng21")
 
 
 ## Plots
-p1 <- p_ana_f89 + xlim(0, 4e-4) + ylim(0, 4e-4)
-p2 <- p_num_f89 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p1 <- p_ana_f89 + xlim(0, 10e-4) + ylim(0, 10e-4)
+p2 <- p_num_f89 + xlim(0, 10e-4) + ylim(0, 10e-4)
 
 p1 / p2
 ```
@@ -150,7 +154,6 @@ p_noeb  <- plot_two_long_df(df_x = make_long_df(df_in = df_noeb, dataset = "no_e
 
 ## EB via plantecophys
 settings$rpmodel_accl$energy_balance <- "on"
-settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib * 1.5
 t_start <- Sys.time()
 df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 t_eb_pl <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
@@ -183,7 +186,7 @@ p_eb_te + xlim(0, 6e-4) + ylim(0, 6e-4)
 ```
 
 
-# Using numerical + smith37
+# Analysis of s37 + numeric
 ## Kattge07 vs. Kumarathunge19
 ```{r}
 ## Kumarathunge19
@@ -234,14 +237,15 @@ p_tempppfd30  <- plot_two_long_df(df_x = make_long_df(df_in = df_tempppfd30, dat
 
 
 ## Plots
-p_all_30 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p_temp10 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p_ppfd10 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p_tempppfd30 + xlim(0, 6e-4) + ylim(0, 6e-4)
+p_all_30 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p_temp10 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p_ppfd10 + xlim(0, 4e-4) + ylim(0, 4e-4)
+p_tempppfd30 + xlim(0, 4e-4) + ylim(0, 4e-4)
 ```
 
 
-# Final best model for vcmax predictions
+
+# Final Model
 ```{r}
 ## Best model:
 settings <- get_settings()
@@ -259,6 +263,7 @@ t_dur   <- Sys.time() - t_start
 t_dur
 p_best
 ```
+
 
 
 # ---
@@ -279,54 +284,3 @@ df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_c
     rename(sitename = site,
            data_raw = data)
 ```
-
-
-### Does implementation of calc_jmax work?
-```{r, fig.width=8, fig.height=2}
-## For Smith37
-## Analytical
-settings     <- get_settings()
-df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
-p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21")
-    
-
-## Numerical
-settings$rpmodel_accl$method_optim   <- "numerical"
-df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-p_num_s37  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21")
-```
-
-```{r, fig.width=8, fig.height=6}
-## Plots
-p1_s37 <- p_ana_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
-p2_s37 <- p_num_s37 + xlim(0, 4e-4) + ylim(0, 4e-4)
-
-p1_s37 / p2_s37
-```
-
-
-```{r}
-## For Farquhar89
-## Analytical
-settings     <- get_settings()
-settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
-settings$rpmodel_accl$kphio_calib    <- settings$rpmodel_accl$kphio_calib*4
-df_ana_f89   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
-p_ana_f89    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89"), df_x_dataset = "analytical_f89", df_y = make_df_evaluation_p21_long(df_in = df_ana_f89), df_y_dataset = "peng21")
-    
-
-## Numerical
-settings$rpmodel_accl$method_optim   <- "numerical"
-df_num_f89 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-p_num_f89  <- plot_two_long_df(df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89"), df_x_dataset = "numerical_f89", df_y = make_df_evaluation_p21_long(df_in = df_num_f89), df_y_dataset = "peng21")
-```
-
-
-```{r, fig.width=8, fig.height=2}
-## Plots
-p1_f89 <- p_ana_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
-p2_f89 <- p_num_f89 + xlim(0, 6e-4) + ylim(0, 6e-4)
-
-p1_f89 + p2_f89
-```
-

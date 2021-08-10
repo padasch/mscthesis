@@ -1,4 +1,4 @@
-# 03/08/2021 ####
+¨# 03/08/2021 ####
 # Attach vcmax25_pft from Kumarathunge2019
 metainfo_k19 <- read_delim("~/data/mscthesis/final/metainfo_k19_2021-08-03.csv", ";", escape_double = FALSE, trim_ws = TRUE)
 # write_csv(metainfo_k19, "~/data/mscthesis/final/metainfo_k19_2021-08-03.csv")
@@ -22,6 +22,7 @@ write_csv(metainfo_k19, "~/data/mscthesis/final/metainfo_k19.csv")
 
 metainfo_k19 <- read_csv("~/data/mscthesis/final/metainfo_k19.csv")
 
+# ......................................................................... ####
 # 04/08/2021 ####
 ## Trying to get lm output into plots: ####
 lm_eqn <- function(df){
@@ -35,6 +36,7 @@ lm_eqn <- function(df){
 
 p1 <- p + geom_text(x = 25, y = 300, label = lm_eqn(df), parse = TRUE)
 
+# ......................................................................... ####
 # 05/08/2021 ####
 # Backup:
 
@@ -80,6 +82,7 @@ plot_obs_vs_pred <- function(df_in, x, y) {
     return(out)
 }
 
+# ......................................................................... ####
 # 06/08/2021 ####
 ## Fix optimization of jmax ####
 ## Get data:
@@ -375,6 +378,7 @@ test$con
 
 
 
+# ......................................................................... ####
 # 08/08/2021 ####
 ## Trying to get that 3d plot optimization of gs vcmax and jmax ####
 
@@ -411,6 +415,7 @@ x <- array(rep(1, 365*5*4), dim=c(365, 5, 4))
 
 
 
+# ......................................................................... ####
 # 09/08/2021 ####
 ## Subset where convergence worked vs. all data ####
 ## Get data
@@ -465,21 +470,23 @@ df_t <- df_ana_s37 %>%
          vcmax_obs = vcmax,
          jmax25_obs = jmax25,
          vcmax25_obs = vcmax25) %>% 
-  # unnest(rpm_accl)
-  unnest(rpm_accl) %>% 
-  dplyr::filter(opt_convergence == 0)
+  unnest(rpm_accl)
+  # unnest(rpm_accl) %>% 
+  # dplyr::filter(opt_convergence == 0)
 
-df_t %>% ggplot(aes(vcmax, vcmax_obs)) +
+df_t %>% ggplot(aes(vcmax*10^6, vcmax_obs*10^6)) +
   geom_point() + 
   geom_smooth(method = "lm") + 
   geom_abline() + 
-  xlim(0, 4e-4) + 
-  ylim(0, 4e-4)
+  xlim(0, 4e-4*10^6) + 
+  ylim(0, 4e-4*10^6)
 
 library(rbeni)
-heatscatter(df_t$vcmax, df_t$vcmax_obs, xlab = "Modelled", ylab = "Observed", ggplot = TRUE)  +
+heatscatter(df_t$vcmax*10^6, df_t$vcmax_obs*10^6, xlab = "Modelled", ylab = "Observed", ggplot = TRUE)  +
   geom_abline() +
-  geom_smooth(data = df_t, aes(vcmax, vcmax_obs), method= "lm")
+  geom_smooth(data = df_t, aes(vcmax*10^6, vcmax_obs*10^6), method= "lm", fullrange = T) +
+  xlim(0, 4e-4*10^6) + 
+  ylim(0, 4e-4*10^6)
 
 
 ## Testing performance of EB ####
@@ -492,8 +499,6 @@ df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, d
 ## EB via tealeaves
 settings$rpmodel_accl$method_eb <- "tealeaves"
 df_eb_te <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
-(t_eb_te <- difftime(Sys.time(), t_start, units = "min") %>% round(2))
-
 p_eb_te  <- plot_two_long_df( df_x = make_long_df(df_in = df_eb_te, dataset = "eb_tealeaves"), df_x_dataset = "eb_tealeaves", df_y = make_df_evaluation_p21_long(df_in = df_eb_te), df_y_dataset = "peng21")
 
 p_eb_te + xlim(0, 4e-4) + ylim(0, 4e-4) + ggtitle("tealeaves")
@@ -512,12 +517,40 @@ abline(0, 1)
 
 plot(df_1$chi, df_4$chi, ylim = c(0, 1), xlim = c(0,1))
 abline(0, 1)
-
+  
 plot(df_1$chi, df_3$chi, ylim = c(0, 1), xlim = c(0,1))
 abline(0, 1)
 
-plot(df_4$tc_growth_leaf, df_3$tc_growth_air, ylim = c(0, 40), xlim = c(0, 40))
+plot(df_4$tc_growth_air, df_4$tc_growth_leaf, ylim = c(0, 40), xlim = c(0, 40))
 abline(0, 1)
 
-plot(df_3$tc_growth_leaf, df_3$tc_growth_air, ylim = c(0, 40), xlim = c(0, 40))
+plot(df_3$tc_growth_air, df_3$tc_growth_leaf, ylim = c(0, 40), xlim = c(0, 40))
 abline(0, 1)
+
+ggplot(df_3, aes(tc_growth_air, tc_growth_leaf)) + geom_smooth(method = "lm", fullrange = T) + geom_point() + geom_abline() + ylim(0,40) + xlim(0,40)
+
+
+# ......................................................................... ####
+# 10/08/2021 ####
+## Testing tealeaves ####
+leaf_par   <- make_leafpar()   # leaf parameters
+enviro_par <- make_enviropar() # environmental parameters
+constants  <- make_constants() # physical constants
+
+tair_v <- seq(0, 50, 0.5)
+tleaf_v <- rep(NA, length(tair_v))
+
+for (t in 1:length(tair_v)) {
+  enviro_par <- make_enviropar(replace = list( T_air = set_units(tair_v[t] + 273.15, "K")))
+  tleaf_v[t] <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% set_units("degree_Celsius") %>% drop_units() %>% round(1)
+}
+
+plot(tair_v, tleaf_v, ylim = c(0, 40), xlim = c(0, 40))
+abline(0, 1)
+
+plot(tair_v, tleaf_v-tair_v, ylim = c(-20, 20), xlim = c(0, 40))
+abline(0, 0)
+
+tair_v[which(tair_v == tleaf_v)]
+
+

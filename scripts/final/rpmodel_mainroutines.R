@@ -26,8 +26,7 @@ rpmodel <- function(
     method_optci   = "prentice14",
     method_jmaxlim = "wang17",
     method_ftemp   = "kumarathunge19",
-    energy_balance = "off",
-    method_eb      = "plantecophys",
+    method_eb      = "off",
     
     ## Other settings
     do_ftemp_kphio = TRUE,
@@ -35,13 +34,6 @@ rpmodel <- function(
     returnvar = NULL,
     verbose = FALSE 
 ){
-  
-  ## DEBUG ZONE ####
-  ### Overwriting kphio input to check for its effect:
-  if (F) {
-    if (method_jmaxlim == "wang17" | method_jmaxlim == "smith19") {kphio <- 0.085}
-    if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {kphio <- 0.275}
-  }
   
   ### Adding check for numerical convergence to output:
   opt_convergence <- NA
@@ -63,7 +55,7 @@ rpmodel <- function(
   rd_to_vcmax <- 0.015  # Ratio of Rdark to Vcmax25, number from Atkin et al., 2015 for C3 herbaceous
   
   ## Get energy balance ####
-  if (method_optim == "numerical" && energy_balance == "on") {
+  if (method_optim == "numerical" && method_eb != "off") {
       
       if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
       if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
@@ -180,14 +172,7 @@ rpmodel <- function(
         ac                <- calc_ac(ci, gammastar, kmm, vcmax, model = method_optim)$ac
         
         ## Electron transport rate
-        jmax <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = settings$rpmodel_accl$method_jmaxlim)
-        
-        ## TODO: OLD CODE COMMENTED OUT
-        ## ..............................  
-        # fact_jmaxlim      <- vcmax * (ci + 2.0 * gammastar) / (kphio_accl * iabs * (ci + kmm))
-        # jmax              <- 4.0 * kphio_accl * iabs / sqrt( (1.0/fact_jmaxlim)^2 - 1.0 )
-        ## ..............................  
-        
+        jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = settings$rpmodel_accl$method_jmaxlim)
         ftemp_jmax        <- calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
         jmax25            <- jmax / ftemp_jmax
         aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim)$aj
@@ -211,9 +196,6 @@ rpmodel <- function(
         if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
         if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
         
-      
-      if (T) { # Working for vcmax predictions
-        
         final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_growth_leaf,
                                                   patm = patm,
                                                   co2 = co2,
@@ -233,36 +215,21 @@ rpmodel <- function(
         chi     <- varlist_optim$chi_mine
         ci      <- varlist_optim$ci_mine
         xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
-        gs      <- varlist_optim$gs_mine    / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        vcmax   <- varlist_optim$vcmax_mine / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        jmax    <- vcmax * 1.67
-        # jmax    <- varlist_optim$jmax_mine  / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
+        gs      <- varlist_optim$gs_mine
+        vcmax   <- varlist_optim$vcmax_mine
+        jmax    <- varlist_optim$jmax_mine
         vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
-        jmax25  <- jmax  /  calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+        jmax25  <- jmax  /  calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
         
-      } else {
-        # TRIAL LEB ####
-        varlist_optim <- minimize_costs_gs_vcmax_jmax(tc_leaf = tc_growth_leaf,
-                                                patm = patm,
-                                                co2 = co2,
-                                                vpd = vpd,
-                                                ppfd = ppfd,
-                                                kphio = kphio,
-                                                method_jmaxlim_inst = method_jmaxlim)
-        
-        chi     <- varlist_optim$chi_mine
-        ci      <- varlist_optim$ci_mine
-        xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
-        gs      <- varlist_optim$gs_mine    / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        vcmax   <- varlist_optim$vcmax_mine / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        jmax    <- varlist_optim$jmax_mine  / 3600 / 24 # Numeric output is in mol/m2/d, get it into mol/m2/s
-        vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
-        jmax25  <- jmax  /  calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
-        
-      }
-      
-        
-
+        if (F) {
+          message("USING JV RATIO FOR JMAX!")
+          vcmax   <- varlist_optim$vcmax_mine
+          vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
+          jmax25  <- vcmax25 * (2.56 - (0.0375 * tc_home) + (-0.0202 * (tc_growth_air - tc_home)))
+          jmax    <- jmax25 * calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+          
+        }
+  
     }
     
     ## Output definition ####
@@ -290,209 +257,6 @@ rpmodel <- function(
     )
     
     return( out )
-}
-
-# ANALYTICAL RPMODEL FUNCTIONS ####
-calc_optimal_chi <- function(kmm, gammastar, ns_star, ca, vpd, beta ){
-  
-  # Input:    - float, 'kmm' : Pa, Michaelis-Menten coeff.
-  #           - float, 'ns_star'  : (unitless) viscosity correction factor for water
-  #           - float, 'vpd' : Pa, vapor pressure deficit
-  # Output:   float, ratio of ci/ca (chi)
-  # Features: Returns an estimate of leaf internal to ambient CO2
-  #           partial pressure following the "simple formulation".
-  # Depends:  - kc
-  #           - ns
-  #           - vpd
-  
-  ## Avoid negative VPD (dew conditions), resolves issue #2 (https://github.com/stineb/rpmodel/issues/2)
-  vpd <- ifelse(vpd < 0, 0, vpd)
-  
-  ## leaf-internal-to-ambient CO2 partial pressure (ci/ca) ratio
-  xi  <- sqrt( (beta * ( kmm + gammastar ) ) / ( 1.6 * ns_star ) )
-  chi <- gammastar / ca + ( 1.0 - gammastar / ca ) * xi / ( xi + sqrt(vpd) )
-  
-  ## more sensible to use chi for calculating mj - equivalent to code below
-  # # Define variable substitutes:
-  # vdcg <- ca - gammastar
-  # vacg <- ca + 2.0 * gammastar
-  # vbkg <- beta * (kmm + gammastar)
-  #
-  # # Check for negatives, vectorized
-  # mj <- ifelse(ns_star>0 & vpd>0 & vbkg>0,
-  #              mj(ns_star, vpd, vacg, vbkg, vdcg, gammastar),
-  #              rep(NA, max(length(vpd), length(ca)))
-  #              )
-  
-  ## alternative variables
-  gamma <- gammastar / ca
-  kappa <- kmm / ca
-  
-  ## use chi for calculating mj
-  mj <- (chi - gamma) / (chi + 2 * gamma)
-  
-  ## mc
-  mc <- (chi - gamma) / (chi + kappa)
-  
-  ## mj:mv
-  mjoc <- (chi + kappa) / (chi + 2 * gamma)
-  
-  # format output list
-  out <- list(
-    xi = xi,
-    chi = chi,
-    mc = mc,
-    mj = mj,
-    mjoc = mjoc
-  )
-  return(out)
-}
-
-
-calc_mprime <- function( mc ){
-  # Input:  mc   (unitless): factor determining LUE
-  # Output: mpi (unitless): modified m accounting for the co-limitation
-  #                         hypothesis after Prentice et al. (2014)
-  
-  kc <- 0.41          # Jmax cost coefficient
-  
-  mpi <- mc^2 - kc^(2.0/3.0) * (mc^(4.0/3.0))
-  
-  # Check for negatives:
-  mpi <- ifelse(mpi>0, sqrt(mpi), NA)
-  
-  return(mpi)
-}
-
-
-calc_lue_vcmax_wang17 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
-  
-  ## Include effect of Jmax limitation
-  len <- length(out_optchi[[1]])
-  mprime <- calc_mprime( out_optchi$mj )
-  
-  out <- list(
-    
-    mprime = mprime,
-    
-    ## Light use efficiency (gpp per unit absorbed light)
-    lue = kphio * ftemp_kphio * mprime * c_molmass * soilmstress,
-    
-    ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
-    vcmax_unitiabs = kphio * ftemp_kphio * out_optchi$mjoc * mprime / out_optchi$mj * soilmstress,
-    
-    ## complement for non-smith19
-    omega      = rep(NA, len),
-    omega_star = rep(NA, len)
-    
-  )
-  
-  return(out)
-}
-
-
-
-calc_lue_vcmax_smith19 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
-  
-  len <- length(out_optchi[[1]])
-  
-  # Adopted from Nick Smith's code:
-  # Calculate omega, see Smith et al., 2019 Ecology Letters
-  omega <- function( theta, c_cost, m ){
-    
-    cm <- 4 * c_cost / m                        # simplification term for omega calculation
-    v  <- 1/(cm * (1 - theta * cm)) - 4 * theta # simplification term for omega calculation
-    
-    # account for non-linearities at low m values
-    capP <- (((1/1.4) - 0.7)^2 / (1-theta)) + 3.4
-    aquad <- -1
-    bquad <- capP
-    cquad <- -(capP * theta)
-    m_star <- (4 * c_cost) / polyroot(c(aquad, bquad, cquad))
-    
-    omega <- ifelse(  m < Re(m_star[1]),
-                      -( 1 - (2 * theta) ) - sqrt( (1 - theta) * v),
-                      -( 1 - (2 * theta))  + sqrt( (1 - theta) * v)
-    )
-    return(omega)
-  }
-  
-  ## constants
-  theta <- 0.85    # should be calibratable?
-  c_cost <- 0.05336251
-  
-  
-  ## factors derived as in Smith et al., 2019
-  omega <- omega( theta = theta, c_cost = c_cost, m = out_optchi$mj )          # Eq. S4
-  omega_star <- 1.0 + omega - sqrt( (1.0 + omega)^2 - (4.0 * theta * omega) )       # Eq. 18
-  
-  ## Effect of Jmax limitation
-  mprime <- out_optchi$mj * omega_star / (8.0 * theta)
-  
-  ## Light use efficiency (gpp per unit absorbed light)
-  lue <- kphio * ftemp_kphio * mprime * c_molmass * soilmstress
-  
-  # calculate Vcmax per unit aborbed light
-  vcmax_unitiabs  <- kphio * ftemp_kphio * out_optchi$mjoc * omega_star / (8.0 * theta) * soilmstress   # Eq. 19
-  
-  out <- list(
-    lue            = lue,
-    vcmax_unitiabs = vcmax_unitiabs,
-    omega          = omega,
-    omega_star     = omega_star
-  )
-  
-  return(out)
-}
-
-
-
-calc_lue_vcmax_none <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
-  ## Do not include effect of Jmax limitation
-  len <- length(out_optchi[[1]])
-  
-  out <- list(
-    
-    ## Light use efficiency (gpp per unit absorbed light)
-    lue = kphio * ftemp_kphio * out_optchi$mj * c_molmass * soilmstress,
-    
-    ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
-    vcmax_unitiabs = kphio * ftemp_kphio * out_optchi$mjoc * soilmstress,
-    
-    ## complement for non-smith19
-    omega               = rep(NA, len),
-    omega_star          = rep(NA, len)
-  )
-  
-  return(out)
-}
-
-
-
-calc_lue_vcmax_c4 <- function( kphio, ftemp_kphio, c_molmass, soilmstress ){
-  
-  len <- length(kphio)
-  out <- list(
-    ## Light use efficiency (gpp per unit absorbed light)
-    lue = kphio * ftemp_kphio * c_molmass * soilmstress,
-    
-    ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
-    vcmax_unitiabs = kphio * ftemp_kphio * soilmstress,
-    
-    ## complement for non-smith19
-    omega               = rep(NA, len),
-    omega_star          = rep(NA, len)
-  )
-  
-  return(out)
-}
-
-
-calc_chi_c4 <- function(){
-  
-  # (Dummy-) ci:ca for C4 photosynthesis
-  out <- list( chi=9999, mc=1, mj=1, mjoc=1 )
-  return(out)
 }
 
 
@@ -558,7 +322,6 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
       method_optim   = settings$rpmodel_accl$method_optim, 
       method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
       method_ftemp   = settings$rpmodel_accl$method_ftemp,
-      energy_balance = settings$rpmodel_accl$energy_balance,
       method_eb      = settings$rpmodel_accl$method_eb
       )
     
@@ -824,8 +587,7 @@ get_settings <- function(){
     rpmodel_accl = list(method_optim      = "analytical",     # Options: analytical or numerical
                         method_jmaxlim    = "smith37",        # Options: smith37 (i.e. wang17) or farquhar89 (i.e. smith19)
                         method_ftemp      = "kumarathunge19", # Options: kattge07 or kumarathunge2019
-                        energy_balance    = "off",             # Options: on or off, only applies if optimal_method = "numeric"
-                        method_eb         = "plantecophys",   # Options: plantecophys or tealeaves package (latter takes significantly longer!)
+                        method_eb         = "off",            # Options: off, plantecophys or tealeaves
                         kphio_calib       = 0.09423773,       # Options: numeric [0, 1], calibrated via rsofun v3.3
                         apar_soilm_calib  = 0.33349283,       # Options: numeric, calibrated via rsofun v3.3
                         bpar_soilm_calib  = 1.45602286,       # Options: numeric, calibrated via rsofun v3.3

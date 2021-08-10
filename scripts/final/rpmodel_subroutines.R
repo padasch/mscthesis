@@ -149,7 +149,7 @@ calc_jmax <- function(kphio, iabs, ci, gammastar, method, theta = NA, c = NA){
     if (method == "smith37" | method == "wang17") {
         c      <- 0.103 # Estimated by Wang et al. (2017)
         c_star <- 4*c
-        jmax   <- 4*kphio*iabs* (sqrt(1 / (1 - (c_star*(ci + 2*gammastar)/(ci-gammastar)))^(2/3)) - 1)  
+        jmax   <- 4*kphio*iabs / (sqrt(1 / (1 - (c_star*(ci + 2*gammastar)/(ci-gammastar))^(2/3)) - 1))  
     }
     
     if (method == "farquhar89" | method == "smith19") {
@@ -296,6 +296,211 @@ calc_ftemp_inst_jmax <- function( tcleaf, tcgrowth, tchome = NA, tcref = 25.0, m
     return( fv )
 }
 
+# ANALYTICAL RPMODEL FUNCTIONS ####
+calc_optimal_chi <- function(kmm, gammastar, ns_star, ca, vpd, beta ){
+    
+    # Input:    - float, 'kmm' : Pa, Michaelis-Menten coeff.
+    #           - float, 'ns_star'  : (unitless) viscosity correction factor for water
+    #           - float, 'vpd' : Pa, vapor pressure deficit
+    # Output:   float, ratio of ci/ca (chi)
+    # Features: Returns an estimate of leaf internal to ambient CO2
+    #           partial pressure following the "simple formulation".
+    # Depends:  - kc
+    #           - ns
+    #           - vpd
+    
+    ## Avoid negative VPD (dew conditions), resolves issue #2 (https://github.com/stineb/rpmodel/issues/2)
+    vpd <- ifelse(vpd < 0, 0, vpd)
+    
+    ## leaf-internal-to-ambient CO2 partial pressure (ci/ca) ratio
+    xi  <- sqrt( (beta * ( kmm + gammastar ) ) / ( 1.6 * ns_star ) )
+    chi <- gammastar / ca + ( 1.0 - gammastar / ca ) * xi / ( xi + sqrt(vpd) )
+    
+    ## more sensible to use chi for calculating mj - equivalent to code below
+    # # Define variable substitutes:
+    # vdcg <- ca - gammastar
+    # vacg <- ca + 2.0 * gammastar
+    # vbkg <- beta * (kmm + gammastar)
+    #
+    # # Check for negatives, vectorized
+    # mj <- ifelse(ns_star>0 & vpd>0 & vbkg>0,
+    #              mj(ns_star, vpd, vacg, vbkg, vdcg, gammastar),
+    #              rep(NA, max(length(vpd), length(ca)))
+    #              )
+    
+    ## alternative variables
+    gamma <- gammastar / ca
+    kappa <- kmm / ca
+    
+    ## use chi for calculating mj
+    mj <- (chi - gamma) / (chi + 2 * gamma)
+    
+    ## mc
+    mc <- (chi - gamma) / (chi + kappa)
+    
+    ## mj:mv
+    mjoc <- (chi + kappa) / (chi + 2 * gamma)
+    
+    # format output list
+    out <- list(
+        xi = xi,
+        chi = chi,
+        mc = mc,
+        mj = mj,
+        mjoc = mjoc
+    )
+    return(out)
+}
+
+
+calc_mprime <- function( mc ){
+    # Input:  mc   (unitless): factor determining LUE
+    # Output: mpi (unitless): modified m accounting for the co-limitation
+    #                         hypothesis after Prentice et al. (2014)
+    
+    kc <- 0.41          # Jmax cost coefficient
+    
+    mpi <- mc^2 - kc^(2.0/3.0) * (mc^(4.0/3.0))
+    
+    # Check for negatives:
+    mpi <- ifelse(mpi>0, sqrt(mpi), NA)
+    
+    return(mpi)
+}
+
+
+calc_lue_vcmax_wang17 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
+    
+    ## Include effect of Jmax limitation
+    len <- length(out_optchi[[1]])
+    mprime <- calc_mprime( out_optchi$mj )
+    
+    out <- list(
+        
+        mprime = mprime,
+        
+        ## Light use efficiency (gpp per unit absorbed light)
+        lue = kphio * ftemp_kphio * mprime * c_molmass * soilmstress,
+        
+        ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
+        vcmax_unitiabs = kphio * ftemp_kphio * out_optchi$mjoc * mprime / out_optchi$mj * soilmstress,
+        
+        ## complement for non-smith19
+        omega      = rep(NA, len),
+        omega_star = rep(NA, len)
+        
+    )
+    
+    return(out)
+}
+
+
+
+calc_lue_vcmax_smith19 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
+    
+    len <- length(out_optchi[[1]])
+    
+    # Adopted from Nick Smith's code:
+    # Calculate omega, see Smith et al., 2019 Ecology Letters
+    omega <- function( theta, c_cost, m ){
+        
+        cm <- 4 * c_cost / m                        # simplification term for omega calculation
+        v  <- 1/(cm * (1 - theta * cm)) - 4 * theta # simplification term for omega calculation
+        
+        # account for non-linearities at low m values
+        capP <- (((1/1.4) - 0.7)^2 / (1-theta)) + 3.4
+        aquad <- -1
+        bquad <- capP
+        cquad <- -(capP * theta)
+        m_star <- (4 * c_cost) / polyroot(c(aquad, bquad, cquad))
+        
+        omega <- ifelse(  m < Re(m_star[1]),
+                          -( 1 - (2 * theta) ) - sqrt( (1 - theta) * v),
+                          -( 1 - (2 * theta))  + sqrt( (1 - theta) * v)
+        )
+        return(omega)
+    }
+    
+    ## constants
+    theta <- 0.85    # should be calibratable?
+    c_cost <- 0.05336251
+    
+    
+    ## factors derived as in Smith et al., 2019
+    omega <- omega( theta = theta, c_cost = c_cost, m = out_optchi$mj )          # Eq. S4
+    omega_star <- 1.0 + omega - sqrt( (1.0 + omega)^2 - (4.0 * theta * omega) )       # Eq. 18
+    
+    ## Effect of Jmax limitation
+    mprime <- out_optchi$mj * omega_star / (8.0 * theta)
+    
+    ## Light use efficiency (gpp per unit absorbed light)
+    lue <- kphio * ftemp_kphio * mprime * c_molmass * soilmstress
+    
+    # calculate Vcmax per unit aborbed light
+    vcmax_unitiabs  <- kphio * ftemp_kphio * out_optchi$mjoc * omega_star / (8.0 * theta) * soilmstress   # Eq. 19
+    
+    out <- list(
+        lue            = lue,
+        vcmax_unitiabs = vcmax_unitiabs,
+        omega          = omega,
+        omega_star     = omega_star
+    )
+    
+    return(out)
+}
+
+
+
+calc_lue_vcmax_none <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
+    ## Do not include effect of Jmax limitation
+    len <- length(out_optchi[[1]])
+    
+    out <- list(
+        
+        ## Light use efficiency (gpp per unit absorbed light)
+        lue = kphio * ftemp_kphio * out_optchi$mj * c_molmass * soilmstress,
+        
+        ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
+        vcmax_unitiabs = kphio * ftemp_kphio * out_optchi$mjoc * soilmstress,
+        
+        ## complement for non-smith19
+        omega               = rep(NA, len),
+        omega_star          = rep(NA, len)
+    )
+    
+    return(out)
+}
+
+
+
+calc_lue_vcmax_c4 <- function( kphio, ftemp_kphio, c_molmass, soilmstress ){
+    
+    len <- length(kphio)
+    out <- list(
+        ## Light use efficiency (gpp per unit absorbed light)
+        lue = kphio * ftemp_kphio * c_molmass * soilmstress,
+        
+        ## Vcmax normalised per unit absorbed PPFD (assuming iabs=1), with Jmax limitation
+        vcmax_unitiabs = kphio * ftemp_kphio * soilmstress,
+        
+        ## complement for non-smith19
+        omega               = rep(NA, len),
+        omega_star          = rep(NA, len)
+    )
+    
+    return(out)
+}
+
+
+calc_chi_c4 <- function(){
+    
+    # (Dummy-) ci:ca for C4 photosynthesis
+    out <- list( chi=9999, mc=1, mj=1, mjoc=1 )
+    return(out)
+}
+
+
+
 # HELPER FUNCTIONS ####
 # .............................................................................
 co2_to_ca <- function( co2, patm ){
@@ -385,134 +590,6 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
                                            jmax_start = 20,
                                            method_jmaxlim_inst = "smith37") {
     
-    optimise_this_tcleaf_vcmax_jmax <- function( par, args, iabs, kphio, beta = 146, c_cost, method_jmaxlim_inst, maximize=FALSE, return_all=FALSE ){
-        
-        ## Parameters to be optimized
-        vcmax <- par[1]
-        gs    <- par[2]
-        jmax  <- par[3]
-        
-        ## Arguments to calculate variables
-        tc_leaf <- args[1]
-        patm    <- args[2]
-        co2     <- args[3]
-        vpd     <- args[4]
-        
-        ## Local variables based on arguments -> TODO: maybe move this to outside?
-        kmm       <- calc_kmm(tc_leaf, patm)
-        gammastar <- calc_gammastar(tc_leaf, patm)
-        ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
-        ca        <- co2_to_ca(co2, patm)
-        vpd       <- vpd
-        kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
-        
-        ## Electron transport is limiting
-        ## Solve quadratic equation system using: A(Fick's Law) = A(Jmax Limitation)
-        ## This leads to a quadratic equation:
-        ## A * ci^2 + B * ci + C  = 0
-        ## 0 = a + b*x + c*x^2
-        
-        ## Jmax Limitation following Smith (1937):
-        if (method_jmaxlim_inst == "smith37") {
-            ## A = gs * (ca - ci)
-            ## A = kphio * iabs (ci-gammastar)/ci+2*gammastar) * L
-            ## L = 1 / sqrt(1 + ((4 * kphio * iabs)/jmax)^2)
-            
-            ## with
-            L <- 1.0 / sqrt(1.0 + ((4.0 * kphio * iabs)/jmax)^2)
-            A <- -gs
-            B <- gs * ca - 2 * gammastar * gs - L * kphio * iabs
-            C <- 2 * gammastar * gs * ca + L * kphio * iabs * gammastar
-            
-            ci_j <- QUADM(A, B, C)
-            a_j  <- kphio * iabs * (ci_j - gammastar)/(ci_j + 2 * gammastar) * L  
-            
-            c_cost <- 0.103 # As estimated by Wang et al. (2017)
-        }
-        
-        ## Jmax Limitation following Farquhar (1989):
-        if (method_jmaxlim_inst == "farquhar89") {
-            ## A = gs * (ca - ci)
-            ## A = j/4 * (ci-gammastar)/ci+2*gammastar)
-            ## j = (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2*theta)
-            
-            ## with
-            theta <- 0.85
-            j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2 * theta)
-            A <- -gs
-            B <- gs * ca - 2 * gammastar * gs - j/4
-            C <- 2 * gammastar * gs * ca + gammastar * j/4
-            
-            ci_j <- ci_j <- QUADM(A, B, C)
-            a_j <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
-            
-            c_cost <- 0.053 # As estimated by Smith et al. (2019)
-        }
-        
-        ## Rubisco is limiting
-        ## Solve Eq. system
-        ## A = gs (ca- ci)
-        ## A = Vcmax * (ci - gammastar)/(ci + Kmm)
-        
-        ## This leads to a quadratic equation:
-        ## A * ci^2 + B * ci + C  = 0
-        ## 0 = a + b*x + c*x^2
-        
-        ## with
-        A <- -1.0 * gs
-        B <- gs * ca - gs * kmm - vcmax
-        C <- gs * ca * kmm + vcmax * gammastar
-        
-        ci_c <- QUADM(A, B, C)
-        a_c <- vcmax * (ci_c - gammastar) / (ci_c + kmm)
-        
-        ## Take minimum of the two assimilation rates and maximum of the two ci
-        assim <- min( a_j, a_c )
-        # assim <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j)
-        ci <- max(ci_c, ci_j)
-        
-        ## only cost ratio is defined. for this here we need absolute values. Set randomly
-        cost_transp <- 1.6 * ns_star * gs * vpd
-        cost_vcmax  <- beta * vcmax
-        cost_jmax   <- c_cost * jmax
-        
-        ## Option B: This is equivalent to the P-model with its optimization of ci:ca.
-        if (assim<=0) {
-            net_assim <- -(999999999.9)
-        } else {
-            net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
-        }
-        
-        if (maximize) net_assim <- -net_assim
-        
-        # print(par)
-        # print(net_assim)
-        
-        if (return_all) {
-            return(
-                tibble(
-                    vcmax_mine = vcmax,
-                    jmax_mine = jmax,
-                    gs_mine = gs,
-                    ci_mine = ci,
-                    chi_mine = ci / ca,
-                    a_c_mine = a_c,
-                    a_j_mine = a_j,
-                    assim = assim,
-                    ci_c_mine = ci_c,
-                    ci_j_mine = ci_j,
-                    cost_transp = cost_transp,
-                    cost_vcmax = cost_vcmax,
-                    cost_jmax = cost_jmax,
-                    net_assim = net_assim,
-                    method_jmaxlim_inst = method_jmaxlim_inst
-                )
-            )
-        } else {
-            return( net_assim )
-        }
-    }
-    
     out_optim <- optimr::optimr(
         par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
         lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
@@ -526,7 +603,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         method_jmaxlim_inst = method_jmaxlim_inst,
         method     = "L-BFGS-B",
         maximize   = TRUE,
-        control    = list( maxit = 10000 )
+        control    = list(maxit=10000, reltol = 10^-6, abtol = 10)
     )
     
     varlist <- optimise_this_tcleaf_vcmax_jmax(
@@ -548,6 +625,145 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
 }
 
 # .............................................................................
+
+optimise_this_tcleaf_vcmax_jmax <-function(par,
+                                           args,
+                                           iabs,
+                                           kphio,
+                                           beta = 146,
+                                           c_cost = NA,
+                                           method_jmaxlim_inst,
+                                           maximize = FALSE,
+                                           return_all = FALSE) {
+    
+    
+    ## Parameters to be optimized
+    vcmax <- par[1]
+    gs    <- par[2]
+    jmax  <- par[3]
+    
+    ## Arguments to calculate variables
+    tc_leaf <- args[1]
+    patm    <- args[2]
+    co2     <- args[3]
+    vpd     <- args[4]
+    
+    ## Local variables based on arguments -> TODO: maybe move this to outside?
+    kmm       <- calc_kmm(tc_leaf, patm)
+    gammastar <- calc_gammastar(tc_leaf, patm)
+    ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
+    ca        <- co2_to_ca(co2, patm)
+    vpd       <- vpd
+    kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
+    
+    ## Electron transport is limiting
+    ## Solve quadratic equation system using: A(Fick's Law) = A(Jmax Limitation)
+    ## This leads to a quadratic equation:
+    ## A * ci^2 + B * ci + C  = 0
+    ## 0 = a + b*x + c*x^2
+    
+    ## Jmax Limitation following Smith (1937):
+    if (method_jmaxlim_inst == "smith37") {
+        ## A = gs * (ca - ci)
+        ## A = kphio * iabs (ci-gammastar)/ci+2*gammastar) * L
+        ## L = 1 / sqrt(1 + ((4 * kphio * iabs)/jmax)^2)
+        
+        ## with
+        L <- 1.0 / sqrt(1.0 + ((4.0 * kphio * iabs)/jmax)^2)
+        A <- -gs
+        B <- gs * ca - 2 * gammastar * gs - L * kphio * iabs
+        C <- 2 * gammastar * gs * ca + L * kphio * iabs * gammastar
+        
+        ci_j <- QUADM(A, B, C)
+        a_j  <- kphio * iabs * (ci_j - gammastar)/(ci_j + 2 * gammastar) * L  
+        
+        c_cost <- 0.103 # As estimated by Wang et al. (2017)
+    }
+    
+    ## Jmax Limitation following Farquhar (1989):
+    if (method_jmaxlim_inst == "farquhar89") {
+        ## A = gs * (ca - ci)
+        ## A = j/4 * (ci-gammastar)/ci+2*gammastar)
+        ## j = (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2*theta)
+        
+        ## with
+        theta <- 0.85
+        j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2 * theta)
+        A <- -gs
+        B <- gs * ca - 2 * gammastar * gs - j/4
+        C <- 2 * gammastar * gs * ca + gammastar * j/4
+        
+        ci_j <- ci_j <- QUADM(A, B, C)
+        a_j <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
+        
+        c_cost <- 0.053 # As estimated by Smith et al. (2019)
+    }
+    
+    ## Rubisco is limiting
+    ## Solve Eq. system
+    ## A = gs (ca- ci)
+    ## A = Vcmax * (ci - gammastar)/(ci + Kmm)
+    
+    ## This leads to a quadratic equation:
+    ## A * ci^2 + B * ci + C  = 0
+    ## 0 = a + b*x + c*x^2
+    
+    ## with
+    A <- -1.0 * gs
+    B <- gs * ca - gs * kmm - vcmax
+    C <- gs * ca * kmm + vcmax * gammastar
+    
+    ci_c <- QUADM(A, B, C)
+    a_c <- vcmax * (ci_c - gammastar) / (ci_c + kmm)
+    
+    ## Take minimum of the two assimilation rates and maximum of the two ci
+    assim <- min( a_j, a_c )
+    # assim <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j)
+    ci <- max(ci_c, ci_j)
+    
+    ## only cost ratio is defined. for this here we need absolute values. Set randomly
+    cost_transp <- 1.6 * ns_star * gs * vpd
+    cost_vcmax  <- beta * vcmax
+    cost_jmax   <- c_cost * jmax
+    
+    ## Option B: This is equivalent to the P-model with its optimization of ci:ca.
+    if (assim<=0) {
+        net_assim <- -(999999999.9)
+    } else {
+        net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
+    }
+    
+    if (maximize) net_assim <- -net_assim
+    
+    # print(par)
+    # print(net_assim)
+    
+    if (return_all) {
+        return(
+            tibble(
+                vcmax_mine = vcmax / 3600 / 24, # Turn output into per-seconds scale
+                jmax_mine = jmax   / 3600 / 24, # Turn output into per-seconds scale
+                gs_mine = gs       / 3600 / 24, # Turn output into per-seconds scale
+                ci_mine = ci,
+                chi_mine = ci / ca,
+                a_c_mine = a_c     / 3600 / 24, # Turn output into per-seconds scale
+                a_j_mine = a_j     / 3600 / 24, # Turn output into per-seconds scale
+                assim = assim      / 3600 / 24, # Turn output into per-seconds scale
+                ci_c_mine = ci_c,
+                ci_j_mine = ci_j,
+                cost_transp = cost_transp,
+                cost_vcmax = cost_vcmax,
+                cost_jmax = cost_jmax,
+                net_assim = net_assim,
+                method_jmaxlim_inst = method_jmaxlim_inst
+            )
+        )
+    } else {
+        return( net_assim )
+    }
+}
+
+# .............................................................................
 LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
                               Tair = 20,     # Input in degC
                               gs = 0.30,     # Input in mol/m2/d/Pa
@@ -564,11 +780,10 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     
     ## Edits to make function runnable within rpmodel
     ## Correct input units to fit calculations below
-    PPFD <- PPFD * 10^6 / (3600*24)               # mol/m2/d to umol/m2/s
-    gs   <- gs * (esat(Tair, Patm / 1000) - VPD)  # mol/m2/d/Pa to ppm mol/m2/d
-    gs   <- gs   / (3600*24)                      # mol/m2/d    to ppm mol/m2/s
-    Patm <- Patm / 1000                           # Pa to kPa
-    VPD  <- VPD  / 1000                           # Pa to kPa
+    PPFD <- PPFD * 10^6 / (3600*24)  # mol/m2/d to umol/m2/s
+    gs   <- gs * VPD                 # mol/m2/s/Pa to mol/m2/s # Old: gs * (esat(Tair, Patm / 1000) - VPD)
+    Patm <- Patm / 1000              # Pa to kPa
+    VPD  <- VPD  / 1000              # Pa to kPa
     
     
     ## Original function:
@@ -750,8 +965,8 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                                          gs_start = 0.5,
                                                          jmax_start = 20)$varlist
     
-    ## 2. Get optimal gs for water from gs for CO2 (divide by 1.6) for EB:
-    gs_water <- varlist_opt_tcleaf$gs_mine / 1.6
+    ## 2. Get optimal conductance to water 
+    gs_water <- varlist_opt_tcleaf$gs_mine * 1.6
     
     if (method_eb == "plantecophys") {
         ## 2.1: Via plantecophys energy balance
@@ -934,7 +1149,7 @@ plot_obs_vs_pred <- function(df_in, x, y) {
     df_temp$y <- df_temp[[y]]
     df_temp$x <- df_temp[[x]]
     
-    fit     <- lm(x ~ y, data = df_temp)
+    fit     <- lm(y ~ x, data = df_temp)
     sry     <- summary(fit)
     r2      <- sry$adj.r.squared %>% round(2)
     rmse    <- sqrt( ( c(crossprod(sry$residuals)) / length(sry$residuals) ) ) %>% round(2)
@@ -1074,27 +1289,42 @@ make_long_df <- function(df_in,
 plot_two_long_df <- function(df_x,
                              df_x_dataset,
                              df_y,
-                             df_y_dataset) {
+                             df_y_dataset,
+                             kphio_vcmax_corr = T) {
     
     names(df_x)[names(df_x) == df_x_dataset] <- "x"
     names(df_y)[names(df_y) == df_y_dataset] <- "y"
     max        <- max(df_x$x, df_y$y)
     df_temp    <- left_join(df_x, df_y)
     
-    p <- df_temp  %>% 
+    if (kphio_vcmax_corr) {
+        ## Linear model for vcmax values
+        fit     <- lm(y ~ x, data = dplyr::filter(df_temp, variable == "vcmax"))
+        sry     <- summary(fit)
+        b0      <- sry$coefficients[1, 1]
+        b1      <- sry$coefficients[2, 1]
+        df_temp$x <- df_temp$x * b1
+        
+        message(">> Phi corrected based on fitted slope. kphio scaling factor: ", round(b1, 3))
+    }
+
+    p <- df_temp  %>%
         ggplot() +
         aes(x = x, y = y) +
-        geom_abline() +
         geom_point() +
         geom_smooth(method = "lm", fullrange = T) +
-        ggpmisc::stat_poly_eq(formula = y ~ x,
+        geom_abline() +
+        ggpmisc::stat_poly_eq(data = df_temp,
+                              formula = y ~ x,
+                              method = "lm",
                               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
                               parse = TRUE) +
         xlab(paste(df_x_dataset)) +
         ylab(paste(df_y_dataset)) +
         ylim(0, max) +
         xlim(0, max) +
-        facet_wrap(~variable, scales = "free") 
+        facet_wrap(~variable, scales = "free") +
+        labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
     
     return(p)
 }

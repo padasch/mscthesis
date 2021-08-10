@@ -1,0 +1,363 @@
+---
+title: "Analysis of Numerical rpmodel"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	error = F,
+	message = FALSE,
+	warning = FALSE
+)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+# Sanity Checks
+## Environmental response
+```{r}
+## Environmental setup
+tc        <- 25
+tc_home   <- 20
+vpd       <- 1000
+co2       <- 400
+ppfd      <- 1500e-6
+patm      <- 101325
+
+
+## Computing setup
+nsteps   <- 50
+settings <- get_settings()
+
+
+## Tibble building
+df_tc <- tibble(
+    tc        = seq(from = 0, to = 40, length.out = nsteps),
+    tc_home   = rep(tc_home, nsteps),
+    vpd       = rep(vpd, nsteps),
+    co2       = rep(co2, nsteps),
+    ppfd      = rep(ppfd, nsteps),
+    patm      = rep(patm, nsteps)
+    ) 
+
+for (row in 1:nrow(df_tc)) {
+    message('\014')
+    message("rpmodel_accl: ", round(row / nrow(df_tc) * 100), " %")
+    
+    df_loop <- rpmodel(
+      
+      ## Acclimated inputs
+      tc_growth_air = df_rpmodel_accl$tc[row],
+      tc_home       = df_rpmodel_accl$tc_home[row],
+      vpd           = df_rpmodel_accl$vpd[row],
+      co2           = df_rpmodel_accl$co2[row],
+      ppfd          = df_rpmodel_accl$ppfd[row],
+      patm          = df_rpmodel_accl$patm[row],
+      
+      ## Local parameters
+      kphio         = settings$rpmodel_accl$kphio_calib,
+      apar_soilm    = settings$rpmodel_accl$apar_soilm_calib,
+      bpar_soilm    = settings$rpmodel_accl$bpar_soilm_calib,
+      
+      ## Calculation methods
+      method_optim   = settings$rpmodel_accl$method_optim, 
+      method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
+      method_ftemp   = settings$rpmodel_accl$method_ftemp,
+      method_eb      = settings$rpmodel_accl$method_eb
+      )
+    
+    ## Definition of rpmodel output
+    df_tc$chi[row]     <- df_loop$chi
+    df_tc$ci[row]      <- df_loop$ci
+    df_tc$xi[row]      <- df_loop$xi
+    df_tc$gs[row]      <- df_loop$gs
+    df_tc$vcmax[row]   <- df_loop$vcmax
+    df_tc$vcmax25[row] <- df_loop$vcmax25
+    df_tc$jmax[row]    <- df_loop$jmax
+    df_tc$jmax25[row]  <- df_loop$jmax25
+    df_tc$kphio[row]   <- df_loop$kphio
+    df_tc$tc_growth_leaf[row]   <- df_loop$tc_growth_leaf
+    df_tc$opt_convergence[row]   <- df_loop$opt_convergence
+  }
+
+
+plot(df_tc$tc, df_tc)
+
+df_tc <- tibble(
+    tc_growth = seq(from = 0, to = 40, length.out = nsteps),
+    tc_home   = rep(tc_home, nsteps),
+    vpd       = rep(vpd, nsteps),
+    co2       = rep(co2, nsteps),
+    ppfd      = rep(ppfd, nsteps),
+    patm      = rep(patm, nsteps)
+    ) %>%
+    mutate( out_pmodel = purrr::pmap(., rpmodel,
+      ## Acclimated inputs
+      tc_growth_air = tc,
+      tc_home       = tc_home,
+      vpd           = vpd,
+      co2           = co2,
+      ppfd          = ppfd,
+      patm          = patm,
+      
+      ## Local parameters
+      kphio         = settings$rpmodel_accl$kphio_calib,
+      apar_soilm    = settings$rpmodel_accl$apar_soilm_calib,
+      bpar_soilm    = settings$rpmodel_accl$bpar_soilm_calib,
+      
+      ## Calculation methods
+      method_optim   = settings$rpmodel_accl$method_optim, 
+      method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
+      method_ftemp   = settings$rpmodel_accl$method_ftemp,
+      method_eb      = settings$rpmodel_accl$method_eb
+        ) ) %>%
+    mutate( out_pmodel = purrr::map(out_pmodel, ~as_tibble(.))) %>%
+    unnest( out_pmodel ) %>%
+    mutate(
+      out = purrr::pmap(
+        dplyr::select(., kmm, gammastar, ns_star, ca, vpd, ppfd),
+        calc_optimal_gs_vcmax_jmax,
+        fapar = 1.0,
+        kphio = kphio,
+        beta = beta,
+        c_cost = c_cost,
+        method_jmaxlim_inst = method_jmaxlim_inst,
+        vcmax_start = vcmax_start,
+        gs_start = gs_start,
+        jmax_start = jmax_start
+      )
+    ) %>% 
+    unnest( out ) %>%
+    mutate( a_ = gpp / 12.0107 )
+```
+
+
+## Cost function
+```{r}
+## Environmental conditions and respective optimal variables
+(opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = 25,
+                                           patm = 101325,
+                                           co2 = 400,
+                                           vpd = 1000,
+                                           ppfd = 130,
+                                           fapar = 1,
+                                           kphio = 0.05,
+                                           beta = 146,
+                                           c_cost = 0.41,
+                                           vcmax_start = 20,
+                                           gs_start = 0.5,
+                                           jmax_start = 20,
+                                           method_jmaxlim_inst = "smith37")$varlist)
+
+vcmax_fix <- opt_vars$vcmax_mine * 3600*24
+jmax_fix  <- opt_vars$jmax_mine  * 3600*24
+gs_fix    <- opt_vars$gs_mine    * 3600*24
+
+
+## Arrays to visualize plot dependencies
+l_out   <- 100
+lims    <- 10
+vcmax_0 <- vcmax_fix
+jmax_0  <- jmax_fix
+gs_0    <- gs_fix
+
+vcmax_v <- seq(0, vcmax_0*lims, length.out = l_out)
+jmax_v  <- seq(0, jmax_0*lims, length.out = l_out)
+gs_v    <- seq(0, gs_0*lims, length.out = l_out)
+cost_3d  <- array (data = NA, dim=c(l_out,l_out,l_out))
+
+
+## PLOTTING
+cost_gg2d <- rep(NA, length(vcmax_v))
+method_jmaxlim_inst <- "smith37"
+
+df_2d <- tibble(
+    cost_vcmax = cost_gg2d,
+    cost_jmax  = cost_gg2d,
+    cost_gs    = cost_gg2d,
+    vcmax      = vcmax_v,
+    jmax       = jmax_v,
+    gs         = gs_v
+)
+
+## Free vcmax
+for (i in 1:length(vcmax_v)) {
+    df_2d$cost_vcmax[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(df_2d$vcmax[i], gs_fix, jmax_fix),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = method_jmaxlim_inst,
+        maximize   = TRUE
+    )
+}
+
+
+## Free jmax
+for (i in 1:length(vcmax_v)) {
+    df_2d$cost_jmax[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(vcmax_fix, gs_fix, df_2d$jmax[i]),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = method_jmaxlim_inst,
+        maximize   = TRUE
+    )
+}
+
+
+## Free gs
+for (i in 1:length(vcmax_v)) {
+    df_2d$cost_gs[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(vcmax_fix, df_2d$gs[i], jmax_fix),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = method_jmaxlim_inst,
+        maximize   = TRUE
+    )
+}
+
+
+p1 <- ggplot(df_2d) + aes(vcmax, cost_vcmax) + geom_point() + ylim(500, 2000)
+p2 <- ggplot(df_2d) + aes(jmax, cost_jmax)   + geom_point() + ylim(500, 2000)
+p3 <- ggplot(df_2d) + aes(gs, cost_gs)       + geom_point() + ylim(500, 2000)
+p4 <- ggplot(df_2d) + aes(jmax, cost_jmax)   + geom_point() + ylim(700, 800)
+
+p1 + p2 + p3 + p4
+```
+
+# Testzone
+
+## Function Call
+```{r}
+## Get reference inputs above
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+        for (k in 1:length(gs_v)) {
+            cost_3d[i, j, k] <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_v[k], jmax_v[j]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+        }
+    }
+}
+```
+
+## 3D Plotly
+```{r}
+## 3D Plot
+library(plotly)
+# p_v <- list()
+# 
+# for (k in 1:length(gs_v)) {
+#     p <- plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~cost_3d[,,k]) %>% add_surface()
+#     p_v <- list(p_v, p)
+# }
+
+plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~cost_3d[,,10]) %>% add_surface()
+plot_ly(x = ~vcmax_v, y = ~gs_v, z = ~cost_3d[,1,]) %>% add_surface()
+plot_ly(x = ~jmax_v, y = ~gs_v, z = ~cost_3d[1,,]) %>% add_surface()
+
+plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~gs_v, color = ~cost_3d[,,k]) %>% add_surface()
+plot_ly(z = ~cost_3d[,,1])
+
+## Dev
+### Stackoverflow
+dat <- data.frame("cat1" = sort(rep(seq(1:6), 6)),
+                  "cat2" = rep(seq(1:6), 6),
+                  "variable" = round(rnorm(36), 1),
+                  "freq" = seq(100, (100-35)))
+
+mat <- tapply(dat$freq, list(dat$cat1, dat$cat2), sum)
+mat_col <- tapply(dat$variable, list(dat$cat1, dat$cat2), sum)
+
+plot_ly(z = ~ mat, type = "surface", surfacecolor = mat_col)
+
+### 
+plot_ly(z=~mat, type="surface", surfacecolor = matrix(nrow = 6, ncol = 6, rep(1:6, each = 6)))
+
+
+```
+
+## GGPLOT 3D
+```{r}
+### When gs is fixed ...........................................................
+df_gs_fix <- tibble(vcmax=NA, jmax=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_fix, jmax_v[j]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(vcmax = vcmax_v[i], jmax = jmax_v[j], cost = cost_3d)
+            df_gs_fix <- bind_rows(df_gs_fix, row)
+    }
+}
+df_gs_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_gs_fix <- ggplot(df_gs_fix) + geom_raster(aes(x = vcmax, y = jmax, fill = cost))
+
+### When jmax is fixed .........................................................
+df_jmax_fix <- tibble(vcmax=NA, gs=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_v[j], jmax_fix),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(vcmax = vcmax_v[i], gs = gs_v[j], cost = cost_3d)
+            df_jmax_fix <- bind_rows(df_jmax_fix, row)
+    }
+}
+
+df_jmax_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_jmax_fix <- ggplot(df_jmax_fix) + geom_raster(aes(x = vcmax, y = gs, fill = cost))
+
+
+### When vcmax is fixed ........................................................
+df_vcmax_fix <- tibble(jmax=NA, gs=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_fix, gs_v[j], jmax_v[i]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(jmax = jmax_v[i], gs = gs_v[j], cost = cost_3d)
+            df_vcmax_fix <- bind_rows(df_vcmax_fix, row)
+    }
+}
+
+df_vcmax_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_vcmax_fix <- ggplot(df_vcmax_fix) + geom_raster(aes(x = jmax, y = gs, fill = cost))
+
+p_gs_fix
+p_jmax_fix
+p_vcmax_fix
+```
+
