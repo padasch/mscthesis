@@ -153,7 +153,7 @@ p_noeb  <- plot_two_long_df(df_x = make_long_df(df_in = df_noeb, dataset = "no_e
 
 
 ## EB via plantecophys
-settings$rpmodel_accl$energy_balance <- "on"
+settings$rpmodel_accl$method_eb <- "plantecophys"
 t_start <- Sys.time()
 df_eb_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 t_eb_pl <- difftime(Sys.time(), t_start, units = "min") %>% round(2)
@@ -218,7 +218,7 @@ p_all_30  <- plot_two_long_df(df_x = make_long_df(df_in = df_all_30, dataset = "
 
 
 ## Shorter thermal acclimation: tc_air_tau = 10:
-settings$rpmodel_accl$tau$tc_air <- 10
+settings$rpmodel_accl$tau$tc_air <- 45
 df_temp10 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 p_temp10  <- plot_two_long_df(df_x = make_long_df(df_in = df_temp10, dataset = "temp_tau_10"), df_x_dataset = "temp_tau_10", df_y = make_df_evaluation_p21_long(df_in = df_temp10), df_y_dataset = "peng21")
 
@@ -241,6 +241,13 @@ p_all_30 + xlim(0, 4e-4) + ylim(0, 4e-4)
 p_temp10 + xlim(0, 4e-4) + ylim(0, 4e-4)
 p_ppfd10 + xlim(0, 4e-4) + ylim(0, 4e-4)
 p_tempppfd30 + xlim(0, 4e-4) + ylim(0, 4e-4)
+
+
+## Notes
+# tc_air tau = 5 -> r'2 0.54
+# tc_air tau = 15 -> r'2 0.48
+# tc_air tau = 45 -> r'2 0.68
+
 ```
 
 
@@ -250,8 +257,8 @@ p_tempppfd30 + xlim(0, 4e-4) + ylim(0, 4e-4)
 ## Best model:
 settings <- get_settings()
 settings$rpmodel_accl$method_optim <- "numerical"
-settings$rpmodel_accl$energy_balance <- "on"
-settings$rpmodel_accl$tau$tc_air <- 10
+settings$rpmodel_accl$method_eb <- "tealeaves"
+settings$rpmodel_accl$tau$tc_air <- 5
 
 
 t_start <- Sys.time()
@@ -267,6 +274,27 @@ p_best
 
 
 # ---
+## Testing Bias
+```{r}
+bias_s37 <- left_join(p_ana_s37$data, df_drivers_p21 %>%
+                          dplyr::select(sitename, forcing) %>% 
+                          unnest(forcing)) %>% 
+    dplyr::filter(variable == "vcmax") %>% 
+    mutate(bias = (x-y)/y*100) 
+
+bias_s37 %>% 
+    pivot_longer(cols = c(patm, vpd, co2, elv, tc_growth_leaf, tc_home, ppfd, doy), names_to = "var", values_to = "val") %>% 
+    ggplot() +
+    aes(x = val, y = bias) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    geom_abline(slope = 0, intecept = 0) +
+    facet_wrap(~var, scales = "free_x") +
+    ylim(-250, 250)
+```
+
+
+
 ## Testzone
 ```{r}
 ## Get data

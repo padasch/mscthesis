@@ -1,0 +1,365 @@
+---
+title: "Analysis of Energy Balance Model"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error = F, message = FALSE, warning = FALSE, cache = TRUE)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+
+# Tealeaves
+```{r}
+g_sw <- set_units(0.001, "m/s")
+convert_conductance(g_sw, 
+                    Temp = set_units(298.15, "K"), 
+                    P = set_units(101.3246, "kPa"))
+g_sw <- set_units(200, "umol/m^2/s/Pa")
+convert_conductance(g_sw, 
+                    Temp = set_units(298.15, "K"), 
+                    P = set_units(101.3246, "kPa"))
+g_sw <- set_units(0.4, "mol/m^2/s")
+convert_conductance(g_sw, 
+                    Temp = set_units(298.15, "K"), 
+                    P = set_units(101.3246, "kPa"))
+```
+
+
+# Plantecophys Sensitivity
+```{r}
+
+```
+
+## Function Definition
+```{r}
+rpmodel_env_response <- function(df_ref   = "no_input",
+                                 settings = "no_input",
+                                 targets  = "no_input",
+                                 drivers  = "no_input",
+                                 remove_non_convergence = F,
+                                 scales_to_one          = T,
+                                 p_output               = "per_target",
+                                 df_full  = "no_input"){
+    
+    ## Input Check ####
+    ## Environmental setup
+    if (df_ref[1] == "no_input") {
+        df_ref <- tibble(tc        = 25,
+                         tc_home   = 20,
+                         vpd       = 1000,
+                         co2       = 400,
+                         ppfd      = 1500e-6,
+                         patm      = 101325,
+                         nsteps    = 50)
+    }
+    
+    
+    ## rpmodel setup
+    if (settings[1] == "no_input") {settings <- get_settings()}
+    if (targets[1] == "no_input") {targets   <- c("chi", "vcmax", "jmax", "gs", "a_gross")} # , "vcmax25", "jmax25"
+    if (drivers[1] == "no_input") {drivers   <- c("tc", "vpd", "co2", "ppfd", "patm")}
+    
+    
+    ## Tibble building ####
+    ## Environmental setup
+    if (!(is_tibble(df_full))) {
+        df_1 <- bind_rows(list =
+                               tibble(
+                                   tc = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                                   tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                   vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                   co2       = rep(df_ref$co2, df_ref$nsteps),
+                                   ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                   patm      = rep(df_ref$patm, df_ref$nsteps),
+                                   env_var   = "tc"),
+                           tibble(
+                                   tc        = rep(df_ref$tc, df_ref$nsteps),
+                                   tc_home   = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                                   vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                   co2       = rep(df_ref$co2, df_ref$nsteps),
+                                   ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                   patm      = rep(df_ref$patm, df_ref$nsteps),
+                                   env_var   = "tc_home"),
+                           tibble(
+                                   tc        = rep(df_ref$tc, df_ref$nsteps),
+                                   tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                   vpd       = seq(from = 200, to = 2000, length.out = df_ref$nsteps),
+                                   co2       = rep(df_ref$co2, df_ref$nsteps),
+                                   ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                   patm      = rep(df_ref$patm, df_ref$nsteps),
+                                   env_var   = "vpd"),
+                           tibble(
+                                   tc        = rep(df_ref$tc, df_ref$nsteps),
+                                   tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                   vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                   co2       = seq(from = 200, to = 1000, length.out = df_ref$nsteps),
+                                   ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                   patm      = rep(df_ref$patm, df_ref$nsteps),
+                                   env_var   = "co2"),
+                           tibble(
+                                   tc        = rep(df_ref$tc, df_ref$nsteps),
+                                   tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                   vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                   co2       = rep(df_ref$co2, df_ref$nsteps),
+                                   ppfd      = seq(from = 100e-6, to = 3000e-6, length.out = df_ref$nsteps),
+                                   patm      = rep(df_ref$patm, df_ref$nsteps),
+                                   env_var   = "ppfd"),
+                           tibble(
+                                   tc        = rep(df_ref$tc, df_ref$nsteps),
+                                   tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                   vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                   co2       = rep(df_ref$co2, df_ref$nsteps),
+                                   ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                   patm      = seq(from = calc_patm(4000), to = calc_patm(0), length.out = df_ref$nsteps),
+                                   env_var   = "patm"))
+        
+
+        
+        
+        ## WORKING CODE ...........................................................................
+        
+        tc_air_v <- seq(0, 40, length.out = 20)
+        gs_w_v   <- seq(1e-6, 10e-6, length.out = 10)
+        setups   <- c("plantecophys", "tealeaves")
+        l_all    <- length(tc_air_v) * length(gs_w_v) * length(setups)
+        
+
+        ## Get tibble of varying tc_air at different gs:
+        df_full <- tibble(tc_air = 1, gs_w = 1, setup = "A", tc_leaf = 1) %>% slice(-1)
+        
+        for (s in setups) {
+            for (g in gs_w_v) {
+                for (t in tc_air_v) {
+                    df_loop <- tibble(tc_air = t, gs_w = g, setup = s)
+                    df_full <- bind_rows(list(df_full, df_loop))
+                }
+            }
+        }
+        
+        for (n in 1:nrow(df_full)) {
+            cat('\014')
+            cat(round(n/nrow(df_full)*100, 0))
+            
+            df_full$tc_leaf[n] <- calc_tc_leaf_final(
+                                          tc_air    = df_full$tc_air[n],
+                                          gs_water  = df_full$gs_w[n],
+                                          gs_input  = "prescribed",
+                                          method_eb = df_full$setup[n],
+                                          vpd       = df_ref$vpd,
+                                          co2       = df_ref$co2,
+                                          ppfd      = df_ref$ppfd * 3600 * 24,
+                                          patm      = df_ref$patm,
+                                          fapar     = 1,
+                                          kphio     = 0.25)
+        }
+        
+        ggplot(df_full %>% mutate(setup = as.factor(setup))) +
+            aes(tc_air, tc_leaf, color = gs_w) + 
+            geom_point() + 
+            geom_abline() + 
+            facet_wrap(~setup)
+        
+        ## WORKING CODE ...........................................................................
+        
+        VPDtoRH(df_ref$vpd/1000, 25, df_ref$patm/1000)
+        
+        esatval <- esat(25, df_ref$patm/1000)
+        e <- pmax(0, esatval - df_ref$vpd)
+        RH <- 100 * e/esatval
+            
+    g_sw <- set_units(4e-7, "mol/m^2/s/Pa")
+    convert_conductance(g_sw, Temp = set_units(298.15, "K"), P = set_units(101.3246, "kPa"))
+                
+        ## Doubling tibble to compare analytical vs. numerical setup
+        df_2       <- df_1
+        df_1$setup <- "plantecophys"
+        df_2$setup <- "tealeaves"
+        df_full    <- bind_rows(list(df_1, df_2))
+        df_full$tc_leaf <- NA
+        
+        
+        ## Run energy balance ####
+        for (row in 1:nrow(df_full)) {
+            message('\014')
+            message("Testing environmental response... ", round(row / nrow(df_full) * 100), " %")
+            
+            if (df_full$setup[row] == "plantecophys") {settings$rpmodel_accl$method_eb <- "plantecophys"}
+            if (df_full$setup[row] == "tealeaves") {settings$rpmodel_accl$method_eb <- "tealeaves"}
+            
+            
+             df_full$tc_leaf[row] <- calc_tc_leaf_final(tc_air    = df_full$tc[row],
+                                                        vpd       = df_full$vpd[row],
+                                                        co2       = df_full$co2[row],
+                                                        ppfd      = df_full$ppfd[row],
+                                                        patm      = df_full$patm[row], 
+                                                        fapar     = 1,
+                                                        kphio     = 0.25,
+                                                        method_jmaxlim_inst = settings$rpmodel_accl$method_jmaxlim,
+                                                        method_eb = settings$rpmodel_accl$method_eb)
+        }
+    }
+    
+    ## Wrangling tibble for plotting
+    df_temp <- df_full %>%
+        mutate(env_var = as.factor(env_var),
+               setup = as.factor(setup))
+    
+    if (remove_non_convergence) {
+        df_temp <- df_temp %>% dplyr::filter(opt_convergence == 0 | is.na(opt_convergence))
+        }
+    
+
+    ## Generating plots ####
+    ## Create empty list
+    p_all <- list()
+    
+    
+    
+    ## Loop and append plots
+    if (p_output == "per_driver") {
+            for (v in drivers) {
+            
+            
+            ## Get reference value of driver
+            vline <- df_ref[[v]]
+            
+            
+            ## Rescale all target values to maximum across all env. conditions
+            if (scales_to_one) {
+                df_max <- tibble(max_val = NA, targets = NA)
+                    
+                for (t in targets) {
+                    ## Take max value of currently looped env. variable
+                    max_val <- df_temp %>% dplyr::filter(env_var == v) %>% dplyr::select(!!t) %>% max()
+                    
+                    ## Take max value across all env. variables
+                    # max_val <- max(df_temp[t])
+                    
+                    ## Divide by max value
+                    df_temp[, t] <- df_temp[t] / max_val
+                    
+                    ## Add x coodrinate for plotting
+                    x  <- (min(df_temp[v]) + max(df_temp[v]))  / 2
+                    x <- min(df_temp[v])
+                    
+                    ## Add all to df
+                    df_max <- bind_rows(list(df_max, tibble(max_val = max_val, targets = t, x = x)))
+                }
+                df_max <- df_max %>%
+                    drop_na() %>%
+                    mutate(targets = as.factor(targets),
+                           max_val = ifelse(max_val < 0.001, round(max_val*10^6, 2), round(max_val, 2)),
+                           label   = paste0("Max.: ", max_val),
+                           setup = "numerical")
+            }
+            
+            
+            ## Plotting
+            p_append <- df_temp %>%
+                dplyr::filter(env_var == v) %>%
+                pivot_longer(cols = all_of(v), names_to = "driver", values_to = "driver_value") %>%
+                pivot_longer(cols = c(targets), names_to = "targets", values_to = "targets_value") %>% 
+                ggplot() +
+                aes(x = driver_value, y = targets_value, color = setup, linetype = setup) +
+                geom_vline(xintercept = vline, alpha = 0.5, color = "grey50", linetype = "solid", size = 0.5) +
+                geom_point(size = 1.5, alpha = 0.8) +
+                ylab(paste(" ")) +
+                xlab(paste(v)) +
+                facet_wrap(~targets, ncol = 3) +
+                labs(title = paste0("Sensitivity to ", v),
+                     caption = paste0("\n Reference conditions (vertical grey lines): \n",
+                                      "tc = ", df_ref$tc, " °C",
+                                      ", tc_home = ", df_ref$tc_home, " °C",
+                                      ", vpd = ", df_ref$vpd, " Pa",
+                                      ", co2 = ", df_ref$co2, " ppm",
+                                      ", ppfd = ", df_ref$ppfd, " µmol/m2/s",
+                                      ", patm = ", df_ref$patm, " Pa")) +
+                  theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+                        legend.position = c(0.825, 0.25))
+            
+            ## Fix yscale from 0 to 1 for comparisons:
+            if (scales_to_one) {
+                p_append <- p_append +
+                    ylim(0, 1) +
+                    ylab("Relative to maximum value") +
+                    geom_text(data = df_max, aes(x = x, y = 0.1, label = label), colour = "black",
+                              hjust = 0,
+                              size = 4,
+                              inherit.aes = FALSE, parse = FALSE)
+            
+            ## Append plot to list
+            p_all[[length(p_all)+1]] <- p_append
+            }
+        }
+    } else if (p_output == "per_target") {
+        for (t in targets) {
+            
+            ## Plotting
+            p_append <- df_temp %>%
+                pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+                pivot_longer(cols = all_of(t), names_to = "targets", values_to = "targets_value") %>% 
+                dplyr::filter(targets == t,
+                              driver  == env_var) %>%
+                ggplot() +
+                aes(x = driver_value, y = targets_value, color = setup, linetype = setup) +
+                geom_vline(data = df_ref %>% pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "x"),
+                           aes(xintercept = x),
+                           alpha = 0.5, color = "grey50", linetype = "solid", size = 0.5) +
+                geom_point(size = 1.5, alpha = 0.8) +
+                xlab(paste(" ")) +
+                ylab(paste(t)) +
+                facet_wrap(~driver, ncol = 3, scales = "free_x") +
+                labs(title = paste0("Sensitivity of ", t),
+                     caption = paste0("\n Reference conditions (vertical grey lines): \n",
+                                      "tc = ", df_ref$tc, " °C",
+                                      ", tc_home = ", df_ref$tc_home, " °C",
+                                      ", vpd = ", df_ref$vpd, " Pa",
+                                      ", co2 = ", df_ref$co2, " ppm",
+                                      ", ppfd = ", df_ref$ppfd, " µmol/m2/s",
+                                      ", patm = ", df_ref$patm, " Pa")) +
+                  theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+                        legend.position = c(0.825, 0.25))
+            
+            ## Fixing scales form comparison
+            if ( t == "chi")     {p_append <- p_append + ylim(0.25, 1)}
+            if ( t == "vcmax")   {p_append <- p_append + ylim(0, 3e-4)}
+            if ( t == "jmax")    {p_append <- p_append + ylim(0, 6e-4)}
+            if ( t == "gs")      {p_append <- p_append + ylim(0, 8e-6)}
+            if ( t == "a_gross") {p_append <- p_append + ylim(0, 7e-5)}
+            
+            ## Append plot to list
+            p_all[[length(p_all)+1]] <- p_append
+        }
+    }
+    
+    ## Define output ####
+    out <- list(plot = p_all,
+                data = df_full)   
+    
+    return(out)
+}
+
+
+
+
+df_temp %>%
+    mutate(tc_ex = tc_leaf - tc) %>% 
+    pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+    pivot_longer(cols = all_of("tc_ex"), names_to = "targets", values_to = "targets_value") %>%
+    dplyr::filter(targets == "tc_ex", driver  == env_var) %>% 
+    ggplot() +
+    aes(x = driver_value, y = targets_value, color = setup) +
+    geom_point() +
+    geom_abline(slope = 0) +
+    facet_wrap(~env_var, scales = "free_x") +
+    ylim(-10, 10)
+    
+```
+

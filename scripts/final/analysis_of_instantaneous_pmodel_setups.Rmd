@@ -11,13 +11,7 @@ output:
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-	echo = FALSE,
-	error = F,
-	message = FALSE,
-	warning = FALSE,
-	cache = TRUE
-)
+knitr::opts_chunk$set(echo = FALSE, error = F, message = FALSE, warning = FALSE, cache = TRUE)
 suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
 ```
 
@@ -31,7 +25,7 @@ df_drivers_k19     <- df_drivers_topt
 df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
 ```
 
-```{r fig.height=3, fig.width=6}
+```{r fig.height=5, fig.width=6}
 ## Vcmax25 Models
 ## Prescribed (from Kumarathunge 2019, Table 2)
 settings    <- get_settings()
@@ -97,6 +91,7 @@ p_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% p
 p_inst_s37$plot + ggtitle("Smith")
 p_inst_f89$plot + ggtitle("Farquhar")
 ```
+
 
 ### Respiration
 #### Scaling of Rd25
@@ -171,21 +166,7 @@ p_inst_275$plot + ggtitle("Fixed ci at 275 ppm")
 
 ### Simulated PPFD setup
 ```{r}
-## Best setup
-settings <- get_settings()
-settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
-
-
-## Run model
-t_start <- Sys.time()
-df_inst_best <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
-t_dur <- Sys.time() - t_start
-p_inst_best <- df_inst_best %>% plot_obs_vs_pred_mina(.)
-
-
-## Plot
-cat("Computational time for analytical vcmax25 and best model: ", round(t_dur, 2), "s")
-p_inst_best$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16")
+# TODO?
 ```
 
 
@@ -222,7 +203,7 @@ p_inst_best_mne <- df_inst_best %>% plot_obs_vs_pred_mina(.)
 ## Plot
 p_inst_best_mne$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16 | MNE only")
 ```
-
+# --- in development:
 ## Open Question: Smith - Farquhar
 
 - Numerical jmax worsens fit of farquhar because estimated jmax is lower which leads to underestimation of predicted tc_opt. Analytical and prescribed jmax thus create a better fit.
@@ -253,6 +234,38 @@ p2 <- p_best_f89$plot + ggtitle("Best Farquhar")
 
 p1 / p2 + plot_layout(guides = "collect")
 ```
+
+
+
+## Energy Balance
+```{r, fig.height=7.5, fig.width=6}
+## Using plantecophys EB:
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_eb    <- "plantecophys"
+df_pl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) 
+
+## Using tealeaves EB:
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_eb    <- "tealeaves"
+df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+
+## Plots
+## Observation
+p_pl_obs <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
+p_tl_obs <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
+
+p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+
+## Models
+p_pl_sim <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+p_tl_sim <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+
+p_pl_sim$plot / p_tl_sim$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
 
 
 

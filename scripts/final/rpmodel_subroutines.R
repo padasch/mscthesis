@@ -564,6 +564,7 @@ Tk <- function(x){x+273.15}
 # .............................................................................
 # Calculation of vapor pressure in Pa
 esat <- function(TdegC, Pa=101){  
+    ## Pa in kPa
     a <- 611.21
     b <- 17.502
     c <- 240.97
@@ -572,8 +573,16 @@ esat <- function(TdegC, Pa=101){
     return(esatval)
 }
 
+VPDtoRH <- function(VPD, TdegC, Pa=101){
+    ## VPD and Pa in kPa
+    esatval <- esat(TdegC, Pa)
+    e <- pmax(0, esatval - VPD*1000)
+    RH <- 100 * e/esatval
+    return(RH)
+}
+
 # .............................................................................
-# OPTIMIZATION FUNCTIONS ####
+# ENERGY BALANCE ####
 # .........................................................
 
 calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
@@ -585,15 +594,15 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
                                            kphio = 0.05,
                                            beta = 146,
                                            c_cost = 0.41,
-                                           vcmax_start = 20,
-                                           gs_start = 0.5,
-                                           jmax_start = 20,
+                                           vcmax_start = 10,
+                                           gs_start = 0.2,
+                                           jmax_start = 10,
                                            method_jmaxlim_inst = "smith37") {
     
     out_optim <- optimr::optimr(
         par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
         lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
-        upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*1000 ),
+        upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*2 ),
         fn         = optimise_this_tcleaf_vcmax_jmax,
         args       = c(tc_leaf, patm, co2, vpd),
         iabs       = (ppfd * fapar),
@@ -772,7 +781,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
                               Patm = 101325, # Input in Pa
                               Wind = 2,      # Input in m/s
                               Wleaf = 0.02,
-                              StomatalRatio = 1, # 2 for amphistomatous
+                              StomatalRatio = 2, # 1= hypostomatous, 2 = amphistomatous
                               LeafAbs = 0.5, # in shortwave range, much less than PAR
                               returnwhat = c("balance", "fluxes")
 ) {
@@ -780,11 +789,10 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     
     ## Edits to make function runnable within rpmodel
     ## Correct input units to fit calculations below
-    PPFD <- PPFD * 10^6 / (3600*24)  # mol/m2/d to umol/m2/s
-    gs   <- gs * VPD                 # mol/m2/s/Pa to mol/m2/s # Old: gs * (esat(Tair, Patm / 1000) - VPD)
-    Patm <- Patm / 1000              # Pa to kPa
-    VPD  <- VPD  / 1000              # Pa to kPa
-    
+    PPFD  <- PPFD * 10^6 / (3600*24)  # mol/m2/d to umol/m2/s
+    gs    <- gs * Patm                # mol/m2/s/Pa to mol/m2/s
+    Patm  <- Patm / 1000              # Pa to kPa
+    VPD   <- VPD  / 1000              # Pa to kPa
     
     ## Original function:
     returnwhat <- match.arg(returnwhat)
@@ -799,7 +807,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     H2OMW <- 18e-3            # J kg-1
     AIRMA <- 29.e-3           # mol mass air (kg/mol)
     AIRDENS <- 1.204          # kg m-3
-    UMOLPERJ <- 4.57
+    UMOLPERJ <- 4.57          # umol/J
     DHEAT <- 21.5e-6          # molecular diffusivity for heat
     
     # Density of dry air
@@ -920,7 +928,7 @@ calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
         
         # Optimr settings:
         method    = "L-BFGS-B",
-        control   = list( maxit = 10000, maximize = TRUE )
+        control   = list( maxit = 100, maximize = TRUE )
     )
     
     return(sol_optimr$par)
@@ -931,7 +939,7 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                   tc_air    = 25,
                                   tc_growth = 25,
                                   tc_home   = 25,
-                                  ppfd      = 130, # mol/m2/d
+                                  ppfd      = 130, # mol/m2/d!
                                   fapar     = 1,
                                   co2       = 400,
                                   patm      = 101325,
@@ -945,29 +953,36 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                   method_jmaxlim_inst = "smith37",
                                   method_eb = "plantecophys",
                                   beta      = 146,
-                                  c_cost    = 0.41) {
+                                  c_cost    = 0.41,
+                                  gs_water  = 2e-6, # mol/m^2/Pa/s
+                                  gs_input  = "rpmodel") { # rpmodel or prescribed
     
     
     ## Output: difference in tc_leaf assumed for gs and tc_leaf from energy balance
     
     ## 1: Get optimal gs, vcmax and jmax at given tc_leaf
-    varlist_opt_tcleaf <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
-                                                         patm = patm,
-                                                         co2 = co2,
-                                                         vpd = vpd,
-                                                         ppfd = ppfd,
-                                                         fapar = fapar,
-                                                         kphio = kphio,
-                                                         beta = beta,
-                                                         c_cost = c_cost,
-                                                         method_jmaxlim_inst = method_jmaxlim_inst,
-                                                         vcmax_start = 20,
-                                                         gs_start = 0.5,
-                                                         jmax_start = 20)$varlist
+    if (gs_input == "prescribed") {
+        gs_water <- gs_water
+        
+    } else {
+        varlist_opt_tcleaf <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
+                                                             patm = patm,
+                                                             co2 = co2,
+                                                             vpd = vpd,
+                                                             ppfd = ppfd,
+                                                             fapar = fapar,
+                                                             kphio = kphio,
+                                                             beta = beta,
+                                                             c_cost = c_cost,
+                                                             method_jmaxlim_inst = method_jmaxlim_inst)$varlist
+        
+        ## Get optimal conductance to water from conductance to co2
+        gs_water <- varlist_opt_tcleaf$gs_mine * 1.6        
+    }
     
-    ## 2. Get optimal conductance to water 
-    gs_water <- varlist_opt_tcleaf$gs_mine * 1.6
-    
+
+    ## 2. Call energy balance
+    ## 2.1: Use energy balance from plantecophys package
     if (method_eb == "plantecophys") {
         ## 2.1: Via plantecophys energy balance
         tc_leaf_leb <- calc_tc_leaf_from_tc_air(tc_air = tc_air,
@@ -980,19 +995,23 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
     } else if (method_eb == "tealeaves") {
         ## 2.2: Via tealeaves energy balance
         
-        # Get relative humidity from vpd:
-        RH <- (100 - ((vpd) / esat(tc_air, patm/1000))) / 100
+        # Get relative humidity from vpd
+        RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
+        
+        # Get incident short-wave radiation flux density from ppfd
+        S_sw <- ppfd / (24*3600) * 10^6 / 4.57 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2
         
         # Get leaf parameters:
         leaf_par <- make_leafpar(
             replace = list(
-                g_sw = set_units(gs_water, "mol/m^2/s/Pa")))
+                g_sw = set_units(gs_water*10^6, "umol/m^2/s/Pa")))
         
         # Get environmental parameters:
         enviro_par <- make_enviropar(
             replace = list(
                 T_air = set_units(tc_air + 273.15, "K"),
-                RH    = as_units(RH),
+                S_sw  = set_units(S_sw, "W/m^2"), 
+                RH    = set_units(RH),
                 P     = set_units(patm, "Pa")))
         
         # Get physical constants:
@@ -1027,8 +1046,9 @@ calc_tc_leaf_final <- function(tc_air    = 25,
                                method_jmaxlim_inst = "smith37",
                                method_eb = "plantecophys",
                                beta      = 146, 
-                               c_cost    = 0.41
-){
+                               c_cost    = 0.41,
+                               gs_water  = 2e-6, # mol/m^2/Pa/s
+                               gs_input  = "rpmodel") { # rpmodel or prescribed
     
     # Get optimized tc_leaf
     
@@ -1036,7 +1056,7 @@ calc_tc_leaf_final <- function(tc_air    = 25,
     sol_optimize <- tryCatch(
         {
             sol_optimize <- optimize(maximize_this_tc_leaf,
-                                     interval  = c(1, 40),
+                                     interval  = c(max(1, tc_air-15), tc_air+15),
                                      tc_air    = tc_air,
                                      tc_growth = tc_growth,
                                      tc_home   = tc_home,
@@ -1054,7 +1074,9 @@ calc_tc_leaf_final <- function(tc_air    = 25,
                                      method_jmaxlim_inst = method_jmaxlim_inst,
                                      method_eb = method_eb,
                                      beta      = beta,
-                                     c_cost    = c_cost)
+                                     c_cost    = c_cost,
+                                     gs_water  = gs_water,
+                                     gs_input  = gs_input)
         },
         warning = function(cond){
             message("calc_tc_leaf_final(): Warning! Did not converge.")
@@ -1204,19 +1226,13 @@ plot_topt_vs_tgrowth <- function(df_in,
     sry     <- lm(tc_opt ~ tc_growth_air, data = df_temp) %>% summary()
     q       <- sry$coefficients[1, 1]
     m       <- sry$coefficients[2, 1]
-    x       <- seq(0, 40, 0.1)
-    y       <- round(x*m + q, 1)
-    crs_air <- x[x == y] 
-    if (length(crs_air) > 1) {crs_air <- crs_air[1]}
+    crs_air <- round(-q/(m-1), 2) # From: x = mx*q
     
     ### For leaf temperatures
     sry     <- lm(tc_opt ~ tc_growth_leaf, data = df_temp) %>% summary()
     q       <- sry$coefficients[1, 1]
     m       <- sry$coefficients[2, 1]
-    x       <- seq(0, 40, 0.1)
-    y       <- round(x*m + q, 1)
-    crs_leaf<- x[x == y] 
-    if (length(crs_leaf) > 1) {crs_leaf <- crs_leaf[1]}
+    crs_leaf<- round(-q/(m-1), 2) # From: x = mx*q
     
     
     ## Create plots
@@ -1279,7 +1295,7 @@ make_long_df <- function(df_in,
         unnest(v_unnest[1]) %>%
         unnest(v_unnest[2]) %>% # Done step-by-step to avoid "Error: Incompatible lengths: 4, 2."
         pivot_longer(cols = v_vars, names_to = "variable", values_to = "values") %>% 
-        dplyr::select(sitename, date, variable, values)
+        dplyr::select(sitename, date, variable, values, tc_growth_leaf)
     
     names(df_out)[names(df_out)=="values"] <- dataset
     
@@ -1323,8 +1339,13 @@ plot_two_long_df <- function(df_x,
         ylab(paste(df_y_dataset)) +
         ylim(0, max) +
         xlim(0, max) +
-        facet_wrap(~variable, scales = "free") +
-        labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
+        facet_wrap(~variable, scales = "free")
+    
+    if (kphio_vcmax_corr) {
+        p <- p + labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
+    }
+    
+        
     
     return(p)
 }

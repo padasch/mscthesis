@@ -38,7 +38,6 @@ rpmodel <- function(
   ### Adding check for numerical convergence to output:
   opt_convergence <- NA
   
-  
   ## Check arguments ####
   if (identical(NA, elv) && identical(NA, patm)){
       stop("Aborted. Provide either elevation (arugment elv) or atmospheric pressure (argument patm).")
@@ -183,10 +182,10 @@ rpmodel <- function(
         rd                 <- iabs * rd_unitiabs
         
         ## Gross assimilation
-        assim <- ifelse(aj < ac , aj, ac)
+        a_gross <- ifelse(aj < ac , aj, ac)
         
         ## Average stomatal conductance
-        gs <- assim / (ca - ci)
+        gs <- a_gross / (ca - ci)
         
     } else if (method_optim == "numerical") {
         
@@ -206,7 +205,6 @@ rpmodel <- function(
                                                   method_jmaxlim_inst = method_jmaxlim)
         
         ## Check if optimization converged
-        # message(final_opt$out_optim$message)
         opt_convergence <- final_opt$out_optim$convergence
       
         ## Extract optimized parameters
@@ -220,6 +218,7 @@ rpmodel <- function(
         jmax    <- varlist_optim$jmax_mine
         vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
         jmax25  <- jmax  /  calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+        a_gross <- varlist_optim$assim
         
         if (F) {
           message("USING JV RATIO FOR JMAX!")
@@ -253,7 +252,8 @@ rpmodel <- function(
         kphio             = kphio_accl,
         tc_growth_leaf    = tc_growth_leaf,
         # rd              = rd,
-        opt_convergence   = opt_convergence
+        opt_convergence   = opt_convergence,
+        a_gross           = a_gross
     )
     
     return( out )
@@ -293,6 +293,7 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
       jmax = NA,
       jmax25 = NA,
       kphio = NA,
+      a_gross = NA,
       tc_growth_leaf = NA,
       opt_convergence = NA) %>% 
     right_join(df_evaluation) %>% 
@@ -337,6 +338,7 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     df_rpmodel_accl$kphio[row]   <- df_loop$kphio
     df_rpmodel_accl$tc_growth_leaf[row]   <- df_loop$tc_growth_leaf
     df_rpmodel_accl$opt_convergence[row]   <- df_loop$opt_convergence
+    df_rpmodel_accl$a_gross[row]   <- df_loop$a_gross
   }
   
   ## Return final dataframe, ready for instantaneous P-Model
