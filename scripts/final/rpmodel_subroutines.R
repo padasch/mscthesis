@@ -41,7 +41,7 @@ calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j
         
         if (j_method == "smith37") {
             ## A = gs (ca - ci)
-            ## A = kphio * iabs (ci-gammastar)/ci+2*gammastar) * L
+            ## A = kphio * iabs * L * (ci-gammastar)/ci+2*gammastar)
             ## L = 1 / sqrt(1 + ((4 * kphio * iabs)/jmax)^2)
             
             ## with
@@ -51,8 +51,8 @@ calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j
             C <- 2 * gammastar * gs * ca + L * kphio * iabs * gammastar
             
             ci_j <- QUADM(A, B, C)
-            j    <- 4 * kphio * iabs * gammastar
-            aj  <- kphio * iabs * (ci_j - gammastar)/(ci_j + 2 * gammastar) * L  
+            j    <- 4 * kphio * iabs * L
+            aj   <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
         }
         
         if (j_method == "farquhar89") {
@@ -67,7 +67,7 @@ calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j
             C <- 2 * gammastar * gs * ca + gammastar * j/4
             
             ci_j <- ci_j <- QUADM(A, B, C)
-            aj <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
+            aj   <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
         }
         
         out = list(aj   = aj,
@@ -787,17 +787,16 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
 ) {
     
     
-    ## Edits to make function runnable within rpmodel
-    ## Correct input units to fit calculations below
-    PPFD  <- PPFD * 10^6 / (3600*24)  # mol/m2/d to umol/m2/s
-    gs    <- gs * Patm                # mol/m2/s/Pa to mol/m2/s
-    Patm  <- Patm / 1000              # Pa to kPa
-    VPD   <- VPD  / 1000              # Pa to kPa
+    ## 0. Prerequisites
+    ## 0.1 Scale units to fit input and calculations
+    returnwhat <- match.arg(returnwhat) # Return difference in input and actual leaf temperature
+    Wleaf <- 0.1                        # Assume same leaf size as tealeaves model
+    PPFD  <- PPFD * 10^6 / (3600*24)    # mol/m2/d to umol/m2/s
+    gs    <- gs * Patm                  # mol/m2/s/Pa to mol/m2/s
+    Patm  <- Patm / 1000                # Pa to kPa
+    VPD   <- VPD  / 1000                # Pa to kPa
     
-    ## Original function:
-    returnwhat <- match.arg(returnwhat)
-    
-    # Constants
+    ## 0.2 Definition of constants
     Boltz <- 5.67 * 10^-8     # w M-2 K-4
     Emissivity <- 0.95        # -
     LatEvap <- 2.54           # MJ kg-1
@@ -810,89 +809,61 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     UMOLPERJ <- 4.57          # umol/J
     DHEAT <- 21.5e-6          # molecular diffusivity for heat
     
-    # Density of dry air
-    AIRDENS <- Patm*1000/(287.058 * Tk(Tair))
     
-    # Latent heat of water vapour at air temperature (J mol-1)
-    LHV <- (H2OLV0 - 2.365E3 * Tair) * H2OMW
+    ## 1. Total Radiative Uptake
+    Rsol    <- 2*PPFD/UMOLPERJ               # Short-wave uptake, W m-2
+    Rlongup <- Emissivity*Boltz*Tk(Tleaf)^4  # Long-wave uptake, W m-2, positive is heat loss from leaf
+    Rnet    <- LeafAbs*Rsol - Rlongup        # Net radiation uptake (- because Rlongup flux direction)
     
-    # Const s in Penman-Monteith equation  (Pa K-1)
-    SLOPE <- (esat(Tair + 0.1) - esat(Tair)) / 0.1
     
-    # Radiation conductance (mol m-2 s-1)
-    Gradiation <- 4.*Boltz*Tk(Tair)^3 * Emissivity / (CPAIR * AIRMA)
-    
-    # See Leuning et al (1995) PC&E 18:1183-1200 Appendix E
-    # Boundary layer conductance for heat - single sided, forced convection
-    CMOLAR <- Patm*1000 / (8.314 * Tk(Tair))   # .Rgas() in package...
-    Gbhforced <- 0.003 * sqrt(Wind/Wleaf) * CMOLAR
-    
-    # Free convection
+    ## 2. Net Radiation
+    ## 2.1 Simplified terms
+    AIRDENS <- Patm*1000/(287.058 * Tk(Tair))     # Density of dry air
+    LHV     <- (H2OLV0 - 2.365E3 * Tair) * H2OMW  # Latent heat of water vapour at air temperature (J mol-1)
+    SLOPE   <- (esat(Tair + 0.1) - esat(Tair)) / 0.1 # Const s in Penman-Monteith equation  (Pa K-1)
+    Gradiation <- 4.*Boltz*Tk(Tair)^3 * Emissivity / (CPAIR * AIRMA) # Radiation conductance, both leaf sides (mol m-2 s-1)
+    CMOLAR  <- Patm*1000 / (8.314 * Tk(Tair))      # .Rgas() in package...
     GRASHOF <- 1.6E8 * abs(Tleaf-Tair) * (Wleaf^3) # Grashof number
-    Gbhfree <- 0.5 * DHEAT * (GRASHOF^0.25) / Wleaf * CMOLAR
+    ea      <- esat(Tair) - 1000*VPD               # Vapor pressure
     
-    # Total conductance to heat (both leaf sides)
-    Gbh <- 2*(Gbhfree + Gbhforced)
-    
-    # Heat and radiative conductance
-    Gbhr <- Gbh + 2*Gradiation
-    
-    # Boundary layer conductance for water (mol m-2 s-1)
-    Gbw <- StomatalRatio * 1.075 * Gbh  # Leuning 1995
-    gw <- gs*Gbw/(gs + Gbw)
-    
-    # Longwave radiation
-    # (positive flux is heat loss from leaf)
-    Rlongup <- Emissivity*Boltz*Tk(Tleaf)^4
-    
-    # Rnet
-    Rsol <- 2*PPFD/UMOLPERJ   # W m-2
-    Rnet <- LeafAbs*Rsol - Rlongup   # full
-    
-    # Isothermal net radiation (Leuning et al. 1995, Appendix)
-    ea <- esat(Tair) - 1000*VPD
-    ema <- 0.642*(ea/Tk(Tair))^(1/7)
-    Rnetiso <- LeafAbs*Rsol - (1 - ema)*Boltz*Tk(Tair)^4 # isothermal net radiation
-    
-    # Isothermal version of the Penmon-Monteith equation
+    ## 2.2 Boundary layer conductance for heat and for water, see Leuning et al. (1995) PC&E 18:1183-1200 Appendix E
+    Gbhforced  <- 0.003 * sqrt(Wind/Wleaf) * CMOLAR             # Boundary conductance under forced convection
+    Gbhfree    <- 0.5 * DHEAT * (GRASHOF^0.25) / Wleaf * CMOLAR # Boundary conductance under free convection
+    Gbh        <- 2*(Gbhfree + Gbhforced)                       # Total conductance (both leaf sides)
+    Gradiation <- Gradiation * 2                                # Radiation conductance on both leaf sides
+    Gbhr       <- Gbh + Gradiation                              # Total boundary layer conductance to heat
+    Gbw        <- StomatalRatio * 1.075 * Gbh                   # Boundary layer conductance for water (mol m-2 s-1)
+
+    ## 2.3 Isothermal net radiation, see Leuning et al. (1995) PC&E 18:1183-1200 Appendix D
+    ema     <- 0.642*(ea/Tk(Tair))^(1/7)                 # Simplified term
+    gw      <- gs*Gbw/(gs + Gbw)                         # Simplified term
+    Rnetiso <- LeafAbs*Rsol - (1 - ema)*Boltz*Tk(Tair)^4 # Isothermal net radiation, Eq. D1
+
+    ## 2.4 Penmon-Monteith equation for latent heat loss, isothermal form, Eq. 10
     GAMMA <- CPAIR*AIRMA*Patm*1000/LHV
     ET <- (1/LHV) * (SLOPE * Rnetiso + 1000*VPD * Gbh * CPAIR * AIRMA) / (SLOPE + GAMMA * Gbhr/gw)
+    lambdaET <- LHV * ET # Latent heat loss
     
-    # Latent heat loss
-    lambdaET <- LHV * ET
+    ## 3. Energy balance and leaf temperature using Leuning 1995, Eq. 11 (both times)
+    ## 3.1 Heat flux from Gradiation, Eq. 11
+    Y <- 1/(1 + Gradiation/Gbh)                          # Psychometric constant
+    H2 <- Y*(Rnetiso - lambdaET)                         # Sensible heat flux
+    Tleaf2 <- Tair + H2/(CPAIR * AIRDENS * (Gbh/CMOLAR)) # Leaf-air temperature calculated from energy balance
     
-    # Heat flux calculated using Gradiation (Leuning 1995, Eq. 11)
-    Y <- 1/(1 + Gradiation/Gbh)
-    H2 <- Y*(Rnetiso - lambdaET)
+    ## 3.2 Sensible heat flux from air-to-leaf temperature difference
+    H <- -CPAIR * AIRDENS * (Gbh/CMOLAR) * (Tair - Tleaf) # (positive flux is heat loss from leaf)
     
-    # Heat flux calculated from leaf-air T difference.
-    # (positive flux is heat loss from leaf)
-    H <- -CPAIR * AIRDENS * (Gbh/CMOLAR) * (Tair - Tleaf)
     
-    # Leaf-air temperature difference recalculated from energy balance.
-    # (same equation as above!)
-    Tleaf2 <- Tair + H2/(CPAIR * AIRDENS * (Gbh/CMOLAR))
+    ## 4. Output for minimization optimum or fluxes:
+    EnergyBal <- (Tleaf - Tleaf2)^2    # For optimization via optimr(), more accurate than using uniroot()
+    # EnergyBal <- abs(Tleaf - Tleaf2) # For optimization via optimr(), needs more iteration than using ()^2
+    # EnergyBal <- (Tleaf - Tleaf2)    # For optimization via uniroot()
     
-    # Difference between input Tleaf and calculated, this will be minimized.
-    # EnergyBal <- (Tleaf - Tleaf2)           # OLD, needed to work with uniroot()
-    EnergyBal <- (Tleaf - Tleaf2)^2         # NEW, needed to work with optimr()
-    # EnergyBal <- abs(Tleaf - Tleaf2)        # NEW, needs more iterations than ()^2
+    if (returnwhat == "balance") {out <- EnergyBal}
+    if (returnwhat == "verbose") {out <- list(tc_leaf = Tleaf, tc_leaf_star  = Tleaf2, eps = EnergyBal)}  # To investigate optimiziation
+    if (returnwhat == "fluxes")  {out <- data.frame(ELEAFeb=1000*ET, Gradiation=Gradiation, Rsol=Rsol, Rnetiso=Rnetiso, Rlongup=Rlongup, H=H, lambdaET=lambdaET, gw=gw, Gbh=Gbh, H2=H2, Tleaf2=Tleaf2)}
     
-    if(returnwhat == "balance"){
-        
-        return(EnergyBal)                      # OLD
-        
-        out <- list(tc_leaf       = Tleaf,     # NEW
-                    tc_leaf_star  = Tleaf2,    # NEW
-                    eps           = EnergyBal) # NEW
-        return(out)                            # NEW
-    }
-    
-    if(returnwhat == "fluxes"){
-        
-        l <- data.frame(ELEAFeb=1000*ET, Gradiation=Gradiation, Rsol=Rsol, Rnetiso=Rnetiso, Rlongup=Rlongup, H=H, lambdaET=lambdaET, gw=gw, Gbh=Gbh, H2=H2, Tleaf2=Tleaf2)
-        return(l)
-    }
+    return(out)
 }
 
 calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
