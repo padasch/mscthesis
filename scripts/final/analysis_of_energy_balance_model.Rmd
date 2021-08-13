@@ -125,9 +125,9 @@ rpmodel_env_response <- function(df_ref   = "no_input",
         
         ## WORKING CODE ...........................................................................
         
-        tc_air_v <- seq(0, 40, length.out = 20)
+        tc_air_v <- seq(0, 50, length.out = 20)
         gs_w_v   <- seq(1e-6, 10e-6, length.out = 10)
-        setups   <- c("plantecophys", "tealeaves")
+        setups   <- "plantecophys"#c("plantecophys", "tealeaves")
         l_all    <- length(tc_air_v) * length(gs_w_v) * length(setups)
         
 
@@ -164,7 +164,9 @@ rpmodel_env_response <- function(df_ref   = "no_input",
             aes(tc_air, tc_leaf, color = gs_w) + 
             geom_point() + 
             geom_abline() + 
-            facet_wrap(~setup)
+            facet_wrap(~setup) +
+          ylim(0, 55) +
+          xlim(0, 55)
         
         ## WORKING CODE ...........................................................................
         
