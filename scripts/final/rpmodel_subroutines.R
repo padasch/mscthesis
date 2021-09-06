@@ -604,7 +604,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
     out_optim <- optimr::optimr(
         par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
         lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
-        upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*2 ),
+        upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*1000 ),
         fn         = optimise_this_tcleaf_vcmax_jmax,
         args       = c(tc_air, patm, co2, vpd),
         iabs       = (ppfd * fapar),
@@ -662,8 +662,11 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     ## .................................................................................................
     ## Energy Balance Development -> get tc_leaf from tc_air
     ## If no energy balance:
-    tc_leaf <- tc_air
+    tc_leaf  <- tc_air
     
+    ## .................................................................................................
+    ## VPD LEAF CALCULATION: DOES NOT WORK YET
+    vpd_leaf  <- VPDairToLeaf(vpd/1000, tc_air, tc_leaf, patm/1000) * 1000
     ## .................................................................................................
     
     ## Local variables based on arguments
@@ -701,7 +704,7 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     ci    <- max(ci_c, ci_j)
     
     ## Individual costs
-    cost_transp <- 1.6 * ns_star * gs * vpd
+    cost_transp <- 1.6 * ns_star * gs * vpd_leaf
     cost_vcmax  <- beta * vcmax
     cost_jmax   <- c_cost * jmax
     
