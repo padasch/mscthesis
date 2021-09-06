@@ -35,16 +35,47 @@ rpmodel <- function(
     verbose = FALSE 
 ){
   
-  ### Adding check for numerical convergence to output:
+  ## Adding check for numerical convergence to output
   opt_convergence <- NA
   
-  ## Check arguments ####
+  ## Check input ####
+  ## Elevation or pressure given?
   if (identical(NA, elv) && identical(NA, patm)){
       stop("Aborted. Provide either elevation (arugment elv) or atmospheric pressure (argument patm).")
   } else if (!identical(NA, elv) && identical(NA, patm)){
       if (verbose) warning("Atmospheric pressure (patm) not provided. Calculating it as a function of elevation (elv), assuming standard atmosphere (101325 Pa at sea level).")
       patm <- patm(elv)
   }
+  
+  
+  ## Quantum yield efficiency given or take reported values? - TODO
+  # if (kphio == "reported") {
+  #   if (method_jmaxlim == "wang17" | method_jmaxlim == "smith37") {
+  #     kphio_correction <- 2.866         # Correction based on pred-obs slope run with reported values?
+  #     kpio_est         <- 0.085         # 0.085: phi as reported by Wang et al. (2017) 
+  #     kphio <- kpio_est * kphio_correction 
+  # 
+  #   if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {
+  #     kphio_correction <- 1             ## Correction based on pred-obs slope run with reported values?
+  #     kphio <- 0.257 * kphio_correction ## 0.257: phi as reported by Smith et al. (2019) 
+  #     }
+  #   }
+  # }
+  
+  ## kphio corrections based for analytical LUE models:
+  if (F && method_optim == "analytical") {
+    if (method_jmaxlim == "wang17"  | method_jmaxlim == "smith37") {kphio <- kphio * 2.585}
+    if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {kphio <- kphio * 6.844}
+    if (verbose) message("rpmodel(): Careful: kphio is corrected  to get slope = 1. kphio = ", kphio)
+  } else {
+    if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {
+      kphio <- kphio * 4
+      if (verbose) message("rpmodel(): Farquhar kphio corrected *4 to: ", kphio)
+    } else {
+      if (verbose) message("rpmodel(): Smith kphio uncorrected: = ", kphio)
+      }
+  }
+  
 
   
   ## Get constants ####
@@ -53,14 +84,20 @@ rpmodel <- function(
   kTo <- 25.0           # base temperature, deg C (Prentice, unpublished)
   rd_to_vcmax <- 0.015  # Ratio of Rdark to Vcmax25, number from Atkin et al., 2015 for C3 herbaceous
   
-  ## Get energy balance ####
-  if (method_optim == "numerical" && method_eb != "off") {
+  
+  ## Run energy balance ####
+  if (method_eb != "off") {
+    
+    if (method_optim == "analytical") {
+      message("Attention: Analytical + Energy Balance does not make much sense...")
+    } else {
+      message("Running with energy balance model: ", method_eb)
+    }
       
       if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
       if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
       
       tc_growth_leaf <- calc_tc_leaf_final(tc_air    = tc_growth_air,
-                                           tc_home   = tc_home,
                                            ppfd      = ppfd * 3600 * 24, # Input has to be in mol/m2/d
                                            fapar     = fapar,
                                            co2       = co2,
@@ -74,8 +111,9 @@ rpmodel <- function(
     }
     
     ## Get model-independent variables ####
-    if (do_ftemp_kphio){ ftemp_kphio <- calc_ftemp_kphio( tc_growth_leaf, c4 ) }
+    if (do_ftemp_kphio) { ftemp_kphio <- calc_ftemp_kphio( tc_growth_leaf, c4 ) }
     if (do_soilmstress) { soilmstress <- soilmstress( soilm, meanalpha, apar_soilm, bpar_soilm ) }
+    
     ca         <- co2_to_ca( co2, patm )
     gammastar  <- calc_gammastar( tc_growth_leaf, patm )
     kmm        <- calc_kmm( tc_growth_leaf, patm )
@@ -168,10 +206,10 @@ rpmodel <- function(
         ftemp_vcmax       <- calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
         vcmax             <- iabs * out_lue_vcmax$vcmax_unitiabs
         vcmax25           <- vcmax / ftemp_vcmax
-        ac                <- calc_ac(ci, gammastar, kmm, vcmax, model = method_optim)$ac
+        ac                <- calc_ac(ci, ca = co2, gammastar, kmm, vcmax, model = method_optim)$ac
         
         ## Electron transport rate
-        jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = settings$rpmodel_accl$method_jmaxlim)
+        jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = method_jmaxlim)
         ftemp_jmax        <- calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
         jmax25            <- jmax / ftemp_jmax
         aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim)$aj
@@ -189,7 +227,7 @@ rpmodel <- function(
         
     } else if (method_optim == "numerical") {
         
-        ## Numerical Model ####
+          ## Numerical Model ####
         ## Get optimal vcmax, jmax and gs
       
         if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
@@ -296,13 +334,15 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
       a_gross = NA,
       tc_growth_leaf = NA,
       opt_convergence = NA) %>% 
-    right_join(df_evaluation) %>% 
+    right_join(df_evaluation %>% dplyr::filter(sitename != "ALC-02", sitename != "DBA-01")) %>% 
     drop_na(ppfd) # To make sure, no rows with NA's enter loop below
   
   ## Calculating acclimated variables:
   for (row in 1:nrow(df_rpmodel_accl)) {
-    message('\014')
-    message("rpmodel_accl: ", round(row / nrow(df_rpmodel_accl) * 100), " %")
+    if (settings$verbose) {
+      message('\014')
+      message("Running acclimated P-Model... ", round(row / nrow(df_rpmodel_accl) * 100), " %")
+    }
     
     df_loop <- rpmodel(
       
@@ -323,7 +363,8 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
       method_optim   = settings$rpmodel_accl$method_optim, 
       method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
       method_ftemp   = settings$rpmodel_accl$method_ftemp,
-      method_eb      = settings$rpmodel_accl$method_eb
+      method_eb      = settings$rpmodel_accl$method_eb,
+      verbose        = settings$verbose
       )
     
     ## Definition of rpmodel output
@@ -395,6 +436,7 @@ sim_rpmodel <- function(df_in, settings){
   }
   
   if (settings$rpmodel_inst$method_vcmax25 == "prescribed") {
+    message("Prescribed vcmax25 taken")
     df_sim$vcmax25 <- df_sim$vcmax25_pft
     
     # Acclimated jmax_to_vcmax taken from Kumarathunge et al. (2019), Table 1, Mature Natural Environment:
@@ -409,7 +451,7 @@ sim_rpmodel <- function(df_in, settings){
     
     if (settings$verbose){
       message('\014')
-      message("rpmodel_sim: ", round(site / nrow(df_sim) * 100), "%")
+      message("Running optimal temperature measurement... ", round(site / nrow(df_sim) * 100), "%")
     }
     
     sitename_temp <- df_sim$sitename[site]
@@ -475,7 +517,8 @@ sim_rpmodel <- function(df_in, settings){
 #---------------------------------#
 # Function for instant rpmodel    #
 #---------------------------------#
-rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd, patm, kphio, tc_growth, tc_home, settings){
+rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd, patm, kphio, tc_growth, tc_home, settings) {
+  
   
   ## Prepare output:
   out <- list(
@@ -513,26 +556,55 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
   
   ## Call analytical or numerical model
   
-  if (T) { #(settings$rpmodel_accl$method_optim == "analytical") { # TODO: ALWAYS USING ANALYTICAL VERSION BECAUSE UNSURE WHAT GS-PREDICTION I SHOULD TAKE
+  if (T | settings$rpmodel_accl$method_optim == "analytical") {
     
     # Instantaneous leaf-internal CO2: ci
     ci <- calc_ci(ca, gammastar, xi, vpd, patm, settings$rpmodel_inst$method_ci)
     
     # Electron Transport Rate: Aj
-    aj <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "analytical")$aj
+    aj <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca = co2, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "analytical")$aj
     
     # Carboxylation Rate: Ac
-    ac <- calc_ac(ci, gammastar, kmm, vcmax, model = "analytical")$ac
+    ac <- calc_ac(ci = ci, ca = co2, gammastar = gammastar, kmm = kmm, vcmax = vcmax, model = "analytical")$ac
     
   } else if (settings$rpmodel_accl$method_optim == "numerical") {
     
+    ## Numerical Model ####
+    ## Get optimal vcmax, jmax and gs -> unrealistic because on timescale of acclimation!
+    
+    final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
+                                                patm = patm,
+                                                co2 = co2,
+                                                vpd = vpd,
+                                                ppfd = ppfd * 3600 * 24,
+                                                fapar = fapar,
+                                                kphio = kphio,
+                                                method_jmaxlim_inst = settings$rpmodel_inst$method_jmaxlim)
+    
+    ## Check if optimization converged
+    opt_convergence <- final_opt$out_optim$convergence
+    
+    ## Extract optimized parameters
+    varlist_optim <- final_opt$varlist
+    
+    chi     <- varlist_optim$chi_mine
+    ci      <- varlist_optim$ci_mine
+    # xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
+    gs      <- varlist_optim$gs_mine
+    vcmax   <- varlist_optim$vcmax_mine
+    jmax    <- varlist_optim$jmax_mine
+    vcmax25 <- vcmax / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth, method_ftemp = settings$rpmodel_inst$method_ftemp)
+    jmax25  <- jmax  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth, tchome = tc_home, method_ftemp = settings$rpmodel_inst$method_ftemp)
+    a_gross <- varlist_optim$assim
+    
+    
     # Electron Transport Rate: Aj
-    aj_out <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = settings$rpmodel_accl$method_optim)
+    aj_out <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca = co2, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "numerical", gs = gs)
     aj     <- aj_out$aj
     ci_j   <- aj_out$ci
     
     # Carboxylation Rate: Ac
-    ac_out <- calc_ac(ci, gammastar, kmm, model = settings$rpmodel_accl$method_optim)
+    ac_out <- calc_ac(ci, ca = co2, gammastar, kmm, vcmax, model = "numerical", gs = gs)
     ac     <- ac_out$ac
     ci_c   <- ac_out$ci
     
@@ -590,7 +662,7 @@ get_settings <- function(){
                         method_jmaxlim    = "smith37",        # Options: smith37 (i.e. wang17) or farquhar89 (i.e. smith19)
                         method_ftemp      = "kumarathunge19", # Options: kattge07 or kumarathunge2019
                         method_eb         = "off",            # Options: off, plantecophys or tealeaves
-                        kphio_calib       = 0.09423773,       # Options: numeric [0, 1], calibrated via rsofun v3.3
+                        kphio_calib       = 0.08179,       # Options: "reported" to pick values reported in Smith et al. 2019, respectively Wang et al. (2019) or numeric [0, 1], calibrated via rsofun v3.3: 0.09423773
                         apar_soilm_calib  = 0.33349283,       # Options: numeric, calibrated via rsofun v3.3
                         bpar_soilm_calib  = 1.45602286,       # Options: numeric, calibrated via rsofun v3.3
                         tau = list(tc_air = 30,               # Options: numeric in days

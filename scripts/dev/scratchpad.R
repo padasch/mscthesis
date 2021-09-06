@@ -1,4 +1,8 @@
-¨# 03/08/2021 ####
+# setup packages ####
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+
+# ......................................................................... ####
+# 03/08/2021 ####
 # Attach vcmax25_pft from Kumarathunge2019
 metainfo_k19 <- read_delim("~/data/mscthesis/final/metainfo_k19_2021-08-03.csv", ";", escape_double = FALSE, trim_ws = TRUE)
 # write_csv(metainfo_k19, "~/data/mscthesis/final/metainfo_k19_2021-08-03.csv")
@@ -422,7 +426,7 @@ x <- array(rep(1, 365*5*4), dim=c(365, 5, 4))
 ## Analytical
 settings <- get_settings()
 settings$rpmodel_accl$kphio_calib <- settings$rpmodel_accl$kphio_calib * 1.5
-df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax()
+df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(df_in = ., ftemp_method = settings$rpmodel_accl$method_ftemp)
 p_ana_s37    <- plot_two_long_df(df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21")
 
 
@@ -552,5 +556,551 @@ plot(tair_v, tleaf_v-tair_v, ylim = c(-20, 20), xlim = c(0, 40))
 abline(0, 0)
 
 tair_v[which(tair_v == tleaf_v)]
+
+
+# ......................................................................... ####
+# 14/08/2021 ####
+
+tc_air <- 8
+
+## Trying to fix calc_tc_leaf_from_eb() ####
+### Optimr() - works fine for "sqrd" and "abs", "diff" & maximize = F, leads to: control$fnscale and control$maximize conflict
+
+optimr::optimr(
+  # Parameter boundaries to optimize within:
+  par       = tc_air,
+  lower     = tc_air - 30,
+  upper     = tc_air + 30,
+  
+  # Function to optimize and its inputs:
+  fn        = LeafEnergyBalance,
+  Tair      = tc_air,    # input in degC
+  returnwhat= "sqrd",
+  
+  # Optimr settings:
+  method    = "L-BFGS-B",
+  control   = list(maxit = 100)
+)
+
+### uniroot - works fine
+uniroot(LeafEnergyBalance,
+        interval = c(tc_air-30, tc_air+30), 
+        Tair = tc_air,
+        returnwhat = "diff")
+
+
+### optimize - works fine for "abs" (slower) and "sqrd"
+optimize(LeafEnergyBalance,
+         interval = c(tc_air-30, tc_air+30), 
+         Tair = tc_air,
+         returnwhat = "sqrd")
+
+
+
+## Trying to fix maximize_this_tc_leaf() ####
+### optimize - works fine for "abs" (slower) and "sqrd" and both eb
+optimize(maximize_this_tc_leaf,
+         interval  = c(tc_air-30, tc_air+30),
+         tc_air    = tc_air,
+         method_opt = "sqrd",
+         method_eb  = "plantecophys")
+
+### uniroot - works fine for both eb
+uniroot(maximize_this_tc_leaf,
+        interval  = c(tc_air-30, tc_air+30),
+        tc_air    = tc_air,
+        method_opt = "diff",
+        method_eb  = "plantecophys")
+
+### optimr - "abs" and "sqrd" crashes, "diff" & maximize = F, leads to: control$fnscale and control$maximize conflict
+optimr(fn = maximize_this_tc_leaf,
+       par = tc_air,
+       lower = tc_air - 30,
+       upper = tc_air + 30,
+       # control = list(maximize = T),
+       method = "L-BFGS-B",
+       method_opt = "abs",
+       method_eb = "plantecophys")
+
+
+# ......................................................................... ####
+# 17/08/2020 ####
+
+## Why does numerical farquhar fuck up at below 10 °C? ####
+v1 <- seq(0, 40, length.out = 40)
+v2 <- rep(NA, length(v1))
+
+for (v in 1:length(v1)) {
+  v2[v] <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = v1[v])$varlist$jmax_mine
+}
+
+plot(v1, v2)
+
+# ......................................................................... ####
+# 19/08/2020 ####
+
+## Loop to find best starting conditions #####
+
+## Fixed starting values
+vcmax_fix <- 2
+jmax_fix  <- 8
+gs_fix    <- 0.6
+
+## Vectors of starting values
+vcmax_v <- c(1, 2, 4, 6, 8, 10, 12, 15)
+jmax_v  <- c(1, 2, 4, 6, 8, 10, 12, 15)
+gs_v    <- c(1, 2, 4, 6, 8, 10, 12, 15)/10
+
+df_start <- bind_rows(list =
+                        tibble(vcmax_start = vcmax_v,
+                               jmax_start  = rep(jmax_fix, length(vcmax_v)),
+                               gs_start    = rep(gs_fix,   length(vcmax_v)),
+                               opt_var     = "vcmax_start"),
+                      tibble(vcmax_start = rep(vcmax_fix, length(vcmax_v)),
+                             jmax_start  = jmax_v,
+                             gs_start    = rep(gs_fix,   length(vcmax_v)),
+                             opt_var     = "jmax_start"),
+                      tibble(vcmax_start = rep(vcmax_fix, length(vcmax_v)),
+                             jmax_start  = rep(jmax_fix, length(vcmax_v)),
+                             gs_start    = gs_v,
+                             opt_var     = "gs_start"))
+
+df_start$data_n_s37 <- NA
+df_start$data_n_f89 <- NA
+
+p_list <- list()
+
+for (i in 1:nrow(df_start)) {
+  
+  cat(i, "/", nrow(df_start), "\n")
+  calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
+                                             patm = 101325,
+                                             co2 = 400,
+                                             vpd = 1000,
+                                             ppfd = 130,
+                                             fapar = 1,
+                                             kphio = 0.05,
+                                             beta = 146,
+                                             c_cost = 0.41,
+                                             vcmax_start = df_start$vcmax_start[i],
+                                             gs_start = df_start$gs_start[i],
+                                             jmax_start = df_start$jmax_start[i],
+                                             method_jmaxlim_inst = "smith37") {
+    
+    out_optim <- optimr::optimr(
+      par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
+      lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
+      upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*2 ),
+      fn         = optimise_this_tcleaf_vcmax_jmax,
+      args       = c(tc_leaf, patm, co2, vpd),
+      iabs       = (ppfd * fapar),
+      kphio      = kphio,
+      beta       = beta,
+      c_cost     = c_cost/4,
+      method_jmaxlim_inst = method_jmaxlim_inst,
+      method     = "L-BFGS-B",
+      maximize   = TRUE,
+      control    = list(maxit=1000)
+    )
+    
+    varlist <- optimise_this_tcleaf_vcmax_jmax(
+      par = out_optim$par,
+      args = c(tc_leaf, patm, co2, vpd),
+      iabs = (fapar * ppfd),
+      kphio,
+      beta,
+      c_cost / 4,
+      method_jmaxlim_inst,
+      maximize = FALSE,
+      return_all = TRUE
+    )
+    
+    out <- list(out_optim = out_optim,
+                varlist   = varlist)
+    
+    return(out)
+  }
+  
+  ## Comparing Numerical Outputs
+  ## Smith:
+  settings <- get_settings()
+  settings$verbose <- F
+  settings$rpmodel_accl$method_optim  <- "numerical"
+  df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_num_s37  <-
+    plot_two_long_df(
+      df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37"),
+      df_x_dataset = "numerical_s37",
+      df_y = make_df_evaluation_p21_long(df_in = df_num_s37),
+      df_y_dataset = "peng21",
+      kphio_vcmax_corr = F
+    )
+  
+  ## Farquhar:
+  settings <- get_settings()
+  settings$verbose <- F
+  settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+  settings$rpmodel_accl$method_optim <- "numerical"
+  df_num_f89 <-
+    run_rpmodel_accl(settings = settings,
+                     df_drivers = df_drivers_p21,
+                     df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_num_f89  <-
+    plot_two_long_df(
+      df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89"),
+      df_x_dataset = "numerical_f89",
+      df_y = make_df_evaluation_p21_long(df_in = df_num_f89),
+      df_y_dataset = "peng21",
+      kphio_vcmax_corr = F
+    )
+  
+  ## Save data
+  df_start$data_n_s37[i] <- list(p_num_s37$data %>% dplyr::filter(variable == "vcmax"))
+  df_start$data_n_f89[i] <- list(p_num_f89$data %>% dplyr::filter(variable == "vcmax"))
+  
+  
+  ## Plots
+  p_num_s37 <- p_num_s37 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Smith-Formulation")
+  p_num_f89 <- p_num_f89 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Farquhar-Formulation")
+  p_new     <- p_num_s37 / p_num_f89
+  
+  p_list[[length(p_list)+1]] <- p_new
+  
+}
+
+## Get metrics:
+df_startingvalues <- df_start %>%
+  mutate(sry_n_s37 = purrr::map(data_n_s37, ~summary(lm(y ~ x, data = .))),
+         sry_n_f89 = purrr::map(data_n_f89, ~summary(lm(y ~ x, data = .))),
+         r2_n_s37   = purrr::map_dbl(sry_n_s37, ~ .$r.squared),
+         r2_n_f89   = purrr::map_dbl(sry_n_f89, ~ .$r.squared),
+         rmse_n_s37 = purrr::map_dbl(sry_n_s37, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )),
+         rmse_n_f89 = purrr::map_dbl(sry_n_f89, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )))
+
+df_startingvalues_without_dfs <- df_startingvalues %>% dplyr::select(-c("data_n_s37"  ,"data_n_f89" , "sry_n_s37" ,"sry_n_f89"))
+
+p_startingvalues <- p_list
+
+# ......................................................................... ####
+# 20/08/2020 ####
+
+## Loop to find best acclimation timespan #####
+vec <- c(7, 15, 30, 60, 90, 120)
+
+df_start <- bind_rows(list =
+                        tibble(tau_temp = vec,
+                               tau_ppfd = rep(30, length(vec)),
+                               opt_var  = "tau_temp"),
+                      tibble(tau_temp = rep(30, length(vec)),
+                             tau_ppfd = vec,
+                             opt_var  = "tau_ppfd"))
+
+df_start$data_a_s37 <- NA
+df_start$data_a_f89 <- NA
+df_start$data_n_s37 <- NA
+df_start$data_n_f89 <- NA
+
+
+p_list <- list()
+
+for (i in 1:nrow(df_start)) {
+  
+  cat(i, "/", nrow(df_start), "\n")
+  
+  ## Analytical models:
+  ## Smith:
+  settings <- get_settings()
+  settings$verbose <- F
+  settings$rpmodel_accl$tau$tc_air <- df_start$tau_temp[i]
+  settings$rpmodel_accl$tau$ppfd   <- df_start$tau_ppfd[i]
+  df_ana_s37   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(df_in = ., ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_ana_s37    <- plot_two_long_df( df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37", v_vars = "vcmax"), df_x_dataset = "analytical_s37", df_y = make_df_evaluation_p21_long(df_in = df_ana_s37), df_y_dataset = "peng21", kphio_vcmax_corr = F)
+  
+  ## Farquhar:
+  settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+  df_ana_f89   <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(df_in = ., ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_ana_f89    <- plot_two_long_df( df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89", v_vars = "vcmax"), df_x_dataset = "analytical_f89", df_y = make_df_evaluation_p21_long(df_in = df_ana_f89), df_y_dataset = "peng21", kphio_vcmax_corr = F)
+  
+  
+  ## Numerical Models:
+  ## Smith:
+  settings$rpmodel_accl$method_jmaxlim <- "smith37"
+  settings$rpmodel_accl$method_optim   <- "numerical"
+  df_num_s37 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_num_s37  <- plot_two_long_df( df_x = make_long_df(df_in = df_num_s37, dataset = "numerical_s37", v_vars = "vcmax"), df_x_dataset = "numerical_s37", df_y = make_df_evaluation_p21_long(df_in = df_num_s37), df_y_dataset = "peng21", kphio_vcmax_corr = F)
+  
+  ## Farquhar:
+  settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+  settings$rpmodel_accl$method_optim   <- "numerical"
+  df_num_f89 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21) %>% get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+  p_num_f89  <- plot_two_long_df( df_x = make_long_df(df_in = df_num_f89, dataset = "numerical_f89", v_vars = "vcmax"), df_x_dataset = "numerical_f89", df_y = make_df_evaluation_p21_long(df_in = df_num_f89), df_y_dataset = "peng21", kphio_vcmax_corr = F)
+  
+  
+  ## Save data:
+  df_start$data_a_s37[i] <- list(p_ana_s37$data %>% dplyr::filter(variable == "vcmax"))
+  df_start$data_a_f89[i] <- list(p_ana_f89$data %>% dplyr::filter(variable == "vcmax"))
+  df_start$data_n_s37[i] <- list(p_num_s37$data %>% dplyr::filter(variable == "vcmax"))
+  df_start$data_n_f89[i] <- list(p_num_f89$data %>% dplyr::filter(variable == "vcmax"))
+  
+  
+  ## Plots
+  p_ana_s37 <- p_ana_s37 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Smith-Formulation - Analytic")
+  p_ana_f89 <- p_ana_f89 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Farquhar-Formulation - Analytic")
+  p_num_s37 <- p_num_s37 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Smith-Formulation - Numeric")
+  p_num_f89 <- p_num_f89 + ylim(0, 250) + xlim(0, 250) + ylab("Observed Values [µmol/m2/s]") + xlab("Predicted Values [µmol/m2/s]") + ggtitle("Farquhar-Formulation - Numeric")
+  
+  p_new     <- p_num_s37 + p_num_f89 + p_ana_s37 + p_ana_f89
+  
+  p_list[[length(p_list)+1]] <- p_new
+  
+}
+
+## Get model metrics:
+df_timespan <- df_start %>%
+  mutate(sry_a_s37 = purrr::map(data_a_s37, ~summary(lm(y ~ x, data = .))),
+         sry_a_f89 = purrr::map(data_a_f89, ~summary(lm(y ~ x, data = .))),
+         sry_n_s37 = purrr::map(data_n_s37, ~summary(lm(y ~ x, data = .))),
+         sry_n_f89 = purrr::map(data_n_f89, ~summary(lm(y ~ x, data = .))),
+         r2_a_s37   = purrr::map_dbl(sry_a_s37, ~ .$r.squared),
+         r2_a_f89   = purrr::map_dbl(sry_a_f89, ~ .$r.squared),
+         r2_n_s37   = purrr::map_dbl(sry_n_s37, ~ .$r.squared),
+         r2_n_f89   = purrr::map_dbl(sry_n_f89, ~ .$r.squared),
+         rmse_a_s37 = purrr::map_dbl(sry_a_s37, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )),
+         rmse_a_f89 = purrr::map_dbl(sry_a_f89, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )),
+         rmse_n_s37 = purrr::map_dbl(sry_n_s37, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )),
+         rmse_n_f89 = purrr::map_dbl(sry_n_f89, ~ sqrt( ( c(crossprod(.$residuals)) / length(.$residuals) ) )))
+
+p_timespan <- p_list
+df_timespan_without_dfs <- df_timespan %>% dplyr::select(-c("data_a_s37" ,  "data_a_f89"  , "data_n_s37"  ,"data_n_f89" , "sry_a_s37" ,"sry_a_f89" ,"sry_n_s37" ,"sry_n_f89"))
+
+
+
+## .....................................................................................................................
+## Global Maps for Peng 2021 #### 
+library(ggmap)
+library(ggrepel)
+
+
+## P21 Global Map
+# Get df_evaluation_p21 from analysis of acclimate pmodel
+
+siteinfo <- df_evaluation_p21 %>% mutate(lon = purrr::map_dbl(data_raw, . %>% pull(lon) %>% unique()),
+                                         lat = purrr::map_dbl(data_raw, . %>% pull(lat) %>% unique()))
+
+kg <- readOGR(dsn = "~/data/climate_zones/1976-2000_GIS", layer = "1976-2000")
+kg <- spTransform(kg, CRS("+proj=longlat +datum=WGS84"))
+kg_f <- fortify(kg, region = "GRIDCODE")
+key <- data.frame( id = c(11, 12, 13, 14, 21, 22, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 61, 62),
+                   cl = c( "Af", "Am", "As", "Aw", "BWk", "BWh", "BSk", "BSh", "Cfa", "Cfb", "Cfc", "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Dfa", "Dfb", "Dfc", "Dfd", "Dsa", "Dsb", "Dsc", "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "EF", "ET"))
+kg_final <- merge(kg_f, key)
+
+(p <- siteinfo %>%
+  ggplot() +
+  # borders("world", colour="black", fill="gray50") +
+  geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl), alpha = 0.8) +
+  geom_point(aes(x = lon, y = lat), color = "black", size = 3, pch = 4) +
+  ylab("Latitude (Decimal Degree)") +
+  xlab("Longitude (Decimal Degree)") +
+  coord_cartesian(ylim=c(-80, 80)) +
+  scale_fill_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                               "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                               "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                               "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                               "#64FFFF", "#F5FFFF")) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 12, direction = "horizontal", title.position = "top")) +
+  labs(fill = "Köppen-Geiger Climate Zone") +
+  ggtitle(bquote(("Global distribution of " ~ V[cmax] ~ "observations"))))
+
+ggsave("~/projects/mscthesis/docs/fig-global-map-p21.pdf", p, height = 7, width = 8)
+
+
+## Attach KG Climate Zones
+df_1 <- siteinfo
+coordinates(df_1) <- ~ lon + lat
+crs(df_1) <- crs(kg)
+df_2 <- point.in.poly(df_1, kg, sp = TRUE, duplicate = TRUE)
+df_2 <- as.data.frame(df_2)
+df_2$id <- df_2$GRIDCODE
+df_2 <- merge(df_2, key)
+siteinfo_kg <- df_2 %>% dplyr::select(cl, sitename)
+
+
+df_evaluation_p21_new <- df_evaluation_p21 %>%
+  left_join(siteinfo_kg %>% rename(site = sitename)) %>% 
+  distinct()
+
+# saveRDS(df_evaluation_p21_new, "~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_clean_with_cl.rds")
+
+## .................................................................................................
+## Global Map für K 19 ####
+# K19 Data
+siteinfo <- readRDS("~/Polybox/2_ETH/ONGOING/msc-thesis/rproject/data/mscthesis/siteinfo_for_cluster.rds") %>%
+  left_join(read_csv("~/data/mscthesis/final/metainfo_k19.csv"))
+
+kg <- readOGR(dsn = "~/data/climate_zones/1976-2000_GIS", layer = "1976-2000")
+kg <- spTransform(kg, CRS("+proj=longlat +datum=WGS84"))
+kg_f <- fortify(kg, region = "GRIDCODE")
+key <- data.frame( id = c(11, 12, 13, 14, 21, 22, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 61, 62),
+                   cl = c( "Af", "Am", "As", "Aw", "BWk", "BWh", "BSk", "BSh", "Cfa", "Cfb", "Cfc", "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Dfa", "Dfb", "Dfc", "Dfd", "Dsa", "Dsb", "Dsc", "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "EF", "ET"))
+kg_final <- merge(kg_f, key)
+
+
+(p <- siteinfo %>%
+    ggplot() +
+    # borders("world", colour="black", fill="gray50") +
+    geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl), alpha = 0.8) +
+    geom_point(aes(x = lon, y = lat), color = "black", size = 3, pch = 4) +
+    ylab("Latitude (Decimal Degree)") +
+    xlab("Longitude (Decimal Degree)") +
+    coord_cartesian(ylim=c(-80, 80)) +
+    scale_fill_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                                 "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                                 "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                                 "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                                 "#64FFFF", "#F5FFFF")) +
+    theme(legend.position = "bottom") +
+    guides(fill = guide_legend(ncol = 12, direction = "horizontal", title.position = "top")) +
+    labs(fill = "Köppen-Geiger Climate Zone") +
+    ggtitle(bquote(("Global distribution of " ~ V[cmax] ~ "observations"))))
+
+ggsave("~/projects/mscthesis/docs/fig-global-map-k19.pdf", p, height = 7, width = 8)
+
+
+siteinfo %>%
+  ggplot() +
+  # borders("world", colour="black", fill="gray50") +
+  # geom_line(data = kg_2, aes(x = Lon, y = Lat, color = Cls)) +
+  # geom_polygon(kg_f, aes(x = long, y = lat, ))
+  geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl, alpha = 0.9)) +
+  geom_point(aes(x = lon, y = lat), color = "black", size = 3, shape = 18) +
+  geom_label_repel(aes(x = lon, y = lat, label = source),
+                   box.padding = 0.5,
+                   point.padding = 0.5,
+                   min.segment.length = 0, # draw all line segments
+                   arrow = arrow(length = unit(0.015, "npc"))) +  # draw arrows
+  ylab("Latitude (Decimal Degree)") +
+  xlab("Longitude (Decimal Degree)") +
+  # coord_cartesian(ylim=c(-85, 80)) +
+  scale_fill_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                               "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                               "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                               "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                               "#64FFFF", "#F5FFFF"),
+                    name = "Koeppen-Geiger Climate Zone",
+                    guide = guide_legend(
+                      direction = "horizontal",
+                      title.position = "top",
+                      ncol = 12))  +
+  theme(legend.position = "bottom")
+
+# ......................................................................... ####
+# 04/09/2020 ####
+## Plots for thesis from scratch ####
+## Prerequisites
+ftemp_method <- settings$rpmodel_accl$method_ftemp
+standard_error <- function(x) sd(x, na.rm = T) / sqrt(length(x)) # Create own se function
+df_in <- df_ana_s37
+
+df_temp <- df_in %>%
+  mutate(tc_growth_air = purrr::map(forcing, ~ dplyr::select(., tc_growth_air)),
+         tc_home = purrr::map(forcing, ~ dplyr::select(., tc_home))) %>% 
+  unnest(c(tc_growth_air, tc_home)) %>% 
+  mutate(
+         # P21 Data
+         p21_tc_leaf     = purrr::map_dbl(data_raw, ~ mean(.$tleaf, na.rm = T)),
+         p21_jmax_mean   = purrr::map_dbl(data_raw, ~ mean(.$jmax, na.rm = T))  * 10 ^-6,
+         p21_jmax_se     = purrr::map_dbl(data_raw, ~ standard_error(.$jmax)) * 10 ^-6,
+         p21_vcmax_mean  = purrr::map_dbl(data_raw, ~ mean(.$vcmax, na.rm = T)) * 10 ^-6,
+         p21_vcmax_se    = purrr::map_dbl(data_raw, ~ standard_error(.$vcmax)) * 10 ^-6,
+         
+         # Rpmodel predictions
+         rpm_jmax        = purrr::map_dbl(rpm_accl, ~magrittr::extract(.$jmax25)),
+         rpm_vcmax       = purrr::map_dbl(rpm_accl, ~magrittr::extract(.$vcmax25)),
+         rpm_jmax        = rpm_jmax  * calc_ftemp_inst_jmax(p21_tc_leaf, tc_growth_air, tc_home, method_ftemp = ftemp_method),
+         rpm_vcmax       = rpm_vcmax * calc_ftemp_inst_vcmax(p21_tc_leaf, tc_growth_air, method_ftemp = ftemp_method),
+         
+         # Climate Zones
+         climate_zone    = purrr::map_chr(data_raw, ~ pull(., cl) %>% unique()),
+         climate_zone    = as.factor(climate_zone)) 
+
+
+## Vcmax plot
+df_temp %>% 
+  ggplot() +
+  aes(x = rpm_vcmax * 10^6,
+      y = p21_vcmax_mean * 10^6) +
+  geom_point(aes(color = climate_zone)) + 
+  geom_errorbar(aes(ymin=(p21_vcmax_mean-p21_vcmax_se)*1e6, ymax=(p21_vcmax_mean+p21_vcmax_se)*1e6, color = climate_zone), width=0.25) +
+  geom_smooth(method = "lm", fullrange = T) +
+  geom_abline() +
+  ggpmisc::stat_poly_eq(data = df_temp,
+                        formula = y ~ x,
+                        method = "lm",
+                        aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                        parse = TRUE) +
+  xlab("Observation") +
+  ylab("Prediction") +
+  ylim(0, 250) +
+  xlim(0, 250) +
+  scale_color_manual(name = c( "Af", "Am", "As", "Aw",
+                              "BWk", "BWh", "BSk", "BSh",
+                              "Cfa", "Cfb", "Cfc", "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc",
+                              "Dfa", "Dfb", "Dfc", "Dfd", "Dsa", "Dsb", "Dsc", "Dsd", "Dwa", "Dwb", "Dwc", "Dwd",
+                              "EF", "ET"),
+                    values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                               "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                               "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                               "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                               "#64FFFF", "#F5FFFF"))
+
+## Removing duplicate entries in P21 data ####
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

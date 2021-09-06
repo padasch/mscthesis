@@ -947,7 +947,7 @@ for (subset in c("obs", "275")) {
 ## (1): Non-sensible fit compared to data points, e.g.:
 ##      - Parabola misses optimal temperature that is well-shown by data points
 ##      - Fit is defined by one outlier
-##      - Ecophysiologically impossible optmal temperature
+##      - Ecophysiologically impossible optimal temperature
 ##
 ## (2): Non-sensible distribution of data points
 ##      - Zero assimilation rate over multiple leaf temperatures (estimate is middle of temperature range)

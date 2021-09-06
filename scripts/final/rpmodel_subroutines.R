@@ -13,7 +13,7 @@ calc_ci <- function(ca, gammastar, xi, vpd, patm, ci_fixed_at_ppm = NA){
 }
 
 # .............................................................................
-calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j_method = "smith37", model = "analytical") {
+calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j_method = "smith37", model = "analytical", gs) {
 
     ## farquhar89: Jmax Limitation following Farquhar (1989):
     ## smith37:    Jmax Limitation following Smith (1937):
@@ -80,7 +80,7 @@ calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j
 }
 
 # .............................................................................
-calc_ac <- function(ci, gammastar, kmm, vcmax, model = "analytical") {
+calc_ac <- function(ci, ca, gammastar, kmm, vcmax, model = "analytical", gs) {
     
     if (model == "analytical") {
         ac <- vcmax * (ci - gammastar)/(ci + kmm)
@@ -136,7 +136,7 @@ calc_rd <- function(tc_leaf, vcmax25, tc_growth, q10 = 2, method_rd25 = "atkin15
     }
     
     if (method_rd_scale == "q10") {
-        f <- q10^(tc_leaf - 25.0)
+        f <- (3.22 - 0.046 * tc_leaf)^(tc_leaf - 25.0)/10 # Q10 changes with tc_leaf acc. to Tjoelker et al. (2001)
     }
     
     rd <- vcmax25 * rd_to_vcmax * f
@@ -594,10 +594,10 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
                                            kphio = 0.05,
                                            beta = 146,
                                            c_cost = 0.41,
-                                           vcmax_start = 10,
-                                           gs_start = 0.2,
-                                           jmax_start = 10,
-                                           method_jmaxlim_inst = "smith37") {
+                                           vcmax_start = 2,
+                                           gs_start = 0.6,
+                                           jmax_start = 8,
+                                           method_jmaxlim_inst) {
     
     out_optim <- optimr::optimr(
         par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
@@ -612,7 +612,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         method_jmaxlim_inst = method_jmaxlim_inst,
         method     = "L-BFGS-B",
         maximize   = TRUE,
-        control    = list(maxit=10000, reltol = 10^-6, abtol = 10)
+        control    = list(maxit=1000)
     )
     
     varlist <- optimise_this_tcleaf_vcmax_jmax(
@@ -662,7 +662,6 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     gammastar <- calc_gammastar(tc_leaf, patm)
     ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
     ca        <- co2_to_ca(co2, patm)
-    vpd       <- vpd
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
     
     ## Electron transport is limiting
@@ -740,10 +739,12 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
         net_assim <- -(999999999.9)
     } else {
         net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
+        # net_assim <- -(cost_transp + cost_vcmax) / assim
+        # net_assim <- -((cost_transp + cost_vcmax) / a_c + (cost_jmax/a_j))
     }
     
     if (maximize) net_assim <- -net_assim
-    
+     
     # print(par)
     # print(net_assim)
     
@@ -781,15 +782,13 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
                               Patm = 101325, # Input in Pa
                               Wind = 2,      # Input in m/s
                               Wleaf = 0.02,
-                              StomatalRatio = 2, # 1= hypostomatous, 2 = amphistomatous
+                              StomatalRatio = 2, # 1 = hypostomatous, 2 = amphistomatous
                               LeafAbs = 0.5, # in shortwave range, much less than PAR
-                              returnwhat = c("balance", "fluxes")
-) {
+                              returnwhat = c("sqrd")) { # sqrd, abs, diff, flux, verbose
     
     
     ## 0. Prerequisites
     ## 0.1 Scale units to fit input and calculations
-    returnwhat <- match.arg(returnwhat) # Return difference in input and actual leaf temperature
     Wleaf <- 0.1                        # Assume same leaf size as tealeaves model
     PPFD  <- PPFD * 10^6 / (3600*24)    # mol/m2/d to umol/m2/s
     gs    <- gs * Patm                  # mol/m2/s/Pa to mol/m2/s
@@ -798,7 +797,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     
     ## 0.2 Definition of constants
     Boltz <- 5.67 * 10^-8     # w M-2 K-4
-    Emissivity <- 0.95        # -
+    Emissivity <- 0.97        # - Original value in plantecophys: 0.95, 0.97 to fit tealeaves conditions
     LatEvap <- 2.54           # MJ kg-1
     CPAIR <- 1010.0           # J kg-1 K-1
     
@@ -806,7 +805,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     H2OMW <- 18e-3            # J kg-1
     AIRMA <- 29.e-3           # mol mass air (kg/mol)
     AIRDENS <- 1.204          # kg m-3
-    UMOLPERJ <- 4.57          # umol/J
+    UMOLPERJ <- 2.04          # umol/J from Meek et al. (1984) as ingestr scales, Bonan (2016) suggests 4.6
     DHEAT <- 21.5e-6          # molecular diffusivity for heat
     
     
@@ -855,11 +854,9 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     
     
     ## 4. Output for minimization optimum or fluxes:
-    EnergyBal <- (Tleaf - Tleaf2)^2    # For optimization via optimr(), more accurate than using uniroot()
-    # EnergyBal <- abs(Tleaf - Tleaf2) # For optimization via optimr(), needs more iteration than using ()^2
-    # EnergyBal <- (Tleaf - Tleaf2)    # For optimization via uniroot()
-    
-    if (returnwhat == "balance") {out <- EnergyBal}
+    if (returnwhat == "sqrd") {out <- (Tleaf - Tleaf2)^2}  # For optimization via optimr(), more accurate than using uniroot()
+    if (returnwhat == "abs")  {out <- abs(Tleaf - Tleaf2)} # For optimization via optimr(), needs more iteration than using ()^2
+    if (returnwhat == "diff") {out <- (Tleaf - Tleaf2)}    # For optimization via uniroot()
     if (returnwhat == "verbose") {out <- list(tc_leaf = Tleaf, tc_leaf_star  = Tleaf2, eps = EnergyBal)}  # To investigate optimiziation
     if (returnwhat == "fluxes")  {out <- data.frame(ELEAFeb=1000*ET, Gradiation=Gradiation, Rsol=Rsol, Rnetiso=Rnetiso, Rlongup=Rlongup, H=H, lambdaET=lambdaET, gw=gw, Gbh=Gbh, H2=H2, Tleaf2=Tleaf2)}
     
@@ -870,63 +867,62 @@ calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
                                      gs       = 0.30, # input in mol/m2/d/Pa
                                      vpd      = 1000, # input in Pa
                                      patm     = 101325, # input in Pa
-                                     ppfd     = 130,  # input in mol/m2/d
-                                     wind     = 2,    # input in m/s
-                                     wleaf    = 0.02,
-                                     stoma_r  = 1, 
-                                     leaf_abs = 0.5) {
+                                     ppfd     = 130   # input in mol/m2/d
+                                     ) {
     
     
-    # LeafEnergyBalance is equivalent to "maximize_this_tc_leaf" with its Tleaf getting optimized
+    # Use uniroots():
+    sol_optimr <- uniroot(LeafEnergyBalance,
+            interval = c(tc_air-30, tc_air+30), 
+            Tair = tc_air,
+            gs        = gs,        # input in mol/m2/d/Pa
+            VPD       = vpd,       # input in Pa
+            Patm      = patm,      # input in Pa
+            PPFD      = ppfd,      # input in mol/m2/d
+            returnwhat = "diff")
     
-    sol_optimr <-	optimr::optimr(
-        # Parameter boundaries to optimize within:
-        par       = 15,
-        lower     = 15 - tc_air, # OLD: 0 
-        upper     = 15 + tc_air, # OLD: 40 
-        
-        # Function to optimize and its inputs:
-        fn        = LeafEnergyBalance,
-        Tair      = tc_air,    # input in degC
-        gs        = gs,        # input in mol/m2/d/Pa
-        VPD       = vpd,       # input in Pa
-        Patm      = patm,      # input in Pa
-        PPFD      = ppfd,      # input in mol/m2/d
-        Wind      = wind,      # input in m/s
-        Wleaf     = wleaf,
-        StomatalRatio = stoma_r,        # 2 for amphistomatous
-        LeafAbs   = leaf_abs,
-        
-        # Optimr settings:
-        method    = "L-BFGS-B",
-        control   = list( maxit = 100, maximize = TRUE )
-    )
+    out <- sol_optimr$root
     
-    return(sol_optimr$par)
+    # sol_optimr <-	optimr::optimr(
+    #     # Parameter boundaries to optimize within:
+    #     par       = tc_air,
+    #     lower     = tc_air - 30,
+    #     upper     = tc_air + 30,
+    #     
+    #     # Function to optimize and its inputs:
+    #     fn        = LeafEnergyBalance,
+    #     Tair      = tc_air,    # input in degC
+    #     gs        = gs,        # input in mol/m2/d/Pa
+    #     VPD       = vpd,       # input in Pa
+    #     Patm      = patm,      # input in Pa
+    #     PPFD      = ppfd,      # input in mol/m2/d
+    #     Wind      = wind,      # input in m/s
+    #     Wleaf     = wleaf,
+    #     StomatalRatio = stoma_r,        # 2 for amphistomatous
+    #     LeafAbs   = leaf_abs,
+    #     
+    #     # Optimr settings:
+    #     method    = "L-BFGS-B",
+    #     control   = list( maxit = 100))
+    # out <- sol_optimr$par
+    
+    return(out)
 }
 
 
 maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optimr()
                                   tc_air    = 25,
-                                  tc_growth = 25,
-                                  tc_home   = 25,
-                                  ppfd      = 130, # mol/m2/d!
+                                  ppfd      = 130, # mol/m2/d
                                   fapar     = 1,
                                   co2       = 400,
                                   patm      = 101325,
                                   vpd       = 1000,
                                   kphio     = 0.05,
-                                  toggles   = NA,
-                                  wind      = 2,
-                                  wleaf     = 0.02,
-                                  stoma_r   = 1,
-                                  leaf_abs  = 0.5,
                                   method_jmaxlim_inst = "smith37",
                                   method_eb = "plantecophys",
-                                  beta      = 146,
-                                  c_cost    = 0.41,
                                   gs_water  = 2e-6, # mol/m^2/Pa/s
-                                  gs_input  = "rpmodel") { # rpmodel or prescribed
+                                  gs_input  = "rpmodel", # rpmodel or prescribed
+                                  method_opt = "diff") {  # sqrd, abs, diff
     
     
     ## Output: difference in tc_leaf assumed for gs and tc_leaf from energy balance
@@ -943,8 +939,6 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
                                                              ppfd = ppfd,
                                                              fapar = fapar,
                                                              kphio = kphio,
-                                                             beta = beta,
-                                                             c_cost = c_cost,
                                                              method_jmaxlim_inst = method_jmaxlim_inst)$varlist
         
         ## Get optimal conductance to water from conductance to co2
@@ -957,11 +951,10 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
     if (method_eb == "plantecophys") {
         ## 2.1: Via plantecophys energy balance
         tc_leaf_leb <- calc_tc_leaf_from_tc_air(tc_air = tc_air,
-                                              gs       = gs_water,
-                                              wind     = wind,
-                                              wleaf    = wleaf,
-                                              stoma_r  = stoma_r,
-                                              leaf_abs = leaf_abs)
+                                                gs     = gs_water,
+                                                vpd      = vpd,
+                                                patm     = patm,
+                                                ppfd     = ppfd)
         
     } else if (method_eb == "tealeaves") {
         ## 2.2: Via tealeaves energy balance
@@ -970,7 +963,7 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
         RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
         
         # Get incident short-wave radiation flux density from ppfd
-        S_sw <- ppfd / (24*3600) * 10^6 / 4.57 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2
+        S_sw <- ppfd / (24*3600) * 10^6 / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
         
         # Get leaf parameters:
         leaf_par <- make_leafpar(
@@ -994,30 +987,23 @@ maximize_this_tc_leaf <- function(tc_leaf   = 25, # This gets optimized in optim
     }
     
     # Get difference between tc_leaf and tc_leaf_x
-    eps <- (tc_leaf_leb - tc_leaf)^2
+    if (method_opt == "sqrd") {out <- (tc_leaf - tc_leaf_leb)^2}
+    if (method_opt == "abs")  {out <- abs((tc_leaf - tc_leaf_leb))}
+    if (method_opt == "diff") {out <- (tc_leaf - tc_leaf_leb)}
     
-    return(eps)
+    return(out)
 }
 
 
 calc_tc_leaf_final <- function(tc_air    = 25,
-                               tc_growth = 25,
-                               tc_home   = 25,
                                ppfd      = 130,
                                fapar     = 1,
                                patm      = 101325,
                                co2       = 400,
                                vpd       = 1000,
                                kphio     = 0.05,
-                               toggles   = NA,
-                               wind      = 2,
-                               wleaf     = 0.02,
-                               stoma_r   = 1,
-                               leaf_abs  = 0.5,
                                method_jmaxlim_inst = "smith37",
                                method_eb = "plantecophys",
-                               beta      = 146, 
-                               c_cost    = 0.41,
                                gs_water  = 2e-6, # mol/m^2/Pa/s
                                gs_input  = "rpmodel") { # rpmodel or prescribed
     
@@ -1026,26 +1012,17 @@ calc_tc_leaf_final <- function(tc_air    = 25,
     # Call optimize()
     sol_optimize <- tryCatch(
         {
-            sol_optimize <- optimize(maximize_this_tc_leaf,
-                                     interval  = c(max(1, tc_air-15), tc_air+15),
+            sol_optimize <- uniroot(maximize_this_tc_leaf,
+                                     interval  = c(max(1, tc_air-30), tc_air+30),
                                      tc_air    = tc_air,
-                                     tc_growth = tc_growth,
-                                     tc_home   = tc_home,
                                      ppfd      = ppfd,
                                      fapar     = fapar,
                                      co2       = co2,
                                      patm      = patm,
                                      vpd       = vpd,
                                      kphio     = kphio,
-                                     toggles   = toggles,
-                                     wind      = wind,
-                                     wleaf     = wleaf,
-                                     stoma_r   = stoma_r,
-                                     leaf_abs  = leaf_abs,
                                      method_jmaxlim_inst = method_jmaxlim_inst,
                                      method_eb = method_eb,
-                                     beta      = beta,
-                                     c_cost    = c_cost,
                                      gs_water  = gs_water,
                                      gs_input  = gs_input)
         },
@@ -1064,7 +1041,7 @@ calc_tc_leaf_final <- function(tc_air    = 25,
     if (length(sol_optimize) == 1) {
         return (tc_leaf <- tc_air)
     } else {
-        tc_leaf <- sol_optimize$minimum
+        tc_leaf <- sol_optimize$root
     }
     
     return(tc_leaf)
@@ -1210,23 +1187,24 @@ plot_topt_vs_tgrowth <- function(df_in,
     if (energy_balance_on) {
         p_temp <- df_temp %>%
             pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
-            ggplot(aes(x = tc_growth, y = tc_opt, color = condition)) +
+            ggplot(aes(x = tc_growth, y = tc_opt, color = condition, fill = condition, shape = condition)) +
             scale_color_manual(values = c(tc_growth_air = "dodgerblue", tc_growth_leaf = "seagreen")) +
+            scale_fill_manual(values = c(tc_growth_air = "dodgerblue", tc_growth_leaf = "seagreen")) +
             labs(caption = paste("Intersection with one-to-one line: tc_growth_air at ", crs_air, "°C | tc_growth_leaf at ", crs_leaf, "°C"))
         
     } else {
         p_temp <- df_temp %>%
-            ggplot(aes(x = tc_growth_air, tc_opt))
+            ggplot(aes(x = tc_growth_air, tc_opt, fill = condition))
     }
     
     p_out <- p_temp +
         geom_abline(linetype = "dotted") +
-        geom_point() +
+        geom_point(alpha = 0.9, size = 1.75) +
         geom_smooth(method = "lm", fullrange = T)+
         xlim(0, 40) +
         ylim(0, 40) +
         xlab("T_growth [°C]") +
-        ylab("T_opt simulated [°C]") +
+        ylab(ifelse(tc_opt == "tc_opt_sim", paste0("T_opt simulated [°C]"), paste0("T_opt observed [°C]"))) +
         ggpmisc::stat_poly_eq(formula = y ~ x,
                               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
                               parse = TRUE) +
@@ -1241,17 +1219,23 @@ plot_topt_vs_tgrowth <- function(df_in,
 # .............................................................................
 make_df_evaluation_p21_long <- function(df_in, ftemp_method = "kumarathunge19") {
     
+    standard_error <- function(x) sd(x, na.rm = T) / sqrt(length(x)) # Create own se function
+    
     df_evaluation_p21_long <- df_in %>%
         mutate(tc_growth_air = purrr::map(forcing, ~ dplyr::select(., tc_growth_air)),
                tc_home = purrr::map(forcing, ~ dplyr::select(., tc_home))) %>% 
         unnest(c(tc_growth_air, tc_home)) %>% 
-        mutate(tc_leaf   = purrr::map_dbl(data_raw, ~ mean(.$tleaf)),
-               jmax      = purrr::map_dbl(data_raw, ~ mean(.$jmax))  * 10 ^-6,
-               vcmax     = purrr::map_dbl(data_raw, ~ mean(.$vcmax)) * 10 ^-6,
+        mutate(tc_leaf   = purrr::map_dbl(data_raw, ~ mean(.$tleaf, na.rm = T)),
+               jmax      = purrr::map_dbl(data_raw, ~ mean(.$jmax, na.rm = T))  * 10 ^-6,
+               vcmax     = purrr::map_dbl(data_raw, ~ mean(.$vcmax, na.rm = T)) * 10 ^-6,
                jmax25    = jmax  / calc_ftemp_inst_jmax(tc_leaf, tc_growth_air, tc_home, method_ftemp = ftemp_method),
-               vcmax25   = vcmax / calc_ftemp_inst_vcmax(tc_leaf, tc_growth_air, method_ftemp = ftemp_method)) %>% 
+               vcmax25   = vcmax / calc_ftemp_inst_vcmax(tc_leaf, tc_growth_air, method_ftemp = ftemp_method),
+               jmax_se   = purrr::map_dbl(data_raw, ~ mean(.$vcmax, na.rm = T)) * 10 ^-6,
+               vcmax_se  = purrr::map_dbl(data_raw, ~ standard_error(.$vcmax)) * 10 ^-6,
+               climate_zone = purrr::map_chr(data_raw, ~magrittr::extract(.$cl) %>% unique),
+               climate_zone = as.factor(climate_zone)) %>% 
         pivot_longer(cols = c(jmax, vcmax, jmax25, vcmax25), names_to = "variable", values_to = "peng21") %>% 
-        dplyr::select(sitename, date, tc_growth_air, tc_home, tc_leaf, variable, peng21) 
+        dplyr::select(sitename, date, tc_growth_air, tc_home, tc_leaf, variable, climate_zone, peng21, jmax_se, vcmax_se) 
     
     return(df_evaluation_p21_long)
 }
@@ -1266,7 +1250,7 @@ make_long_df <- function(df_in,
         unnest(v_unnest[1]) %>%
         unnest(v_unnest[2]) %>% # Done step-by-step to avoid "Error: Incompatible lengths: 4, 2."
         pivot_longer(cols = v_vars, names_to = "variable", values_to = "values") %>% 
-        dplyr::select(sitename, date, variable, values, tc_growth_leaf)
+        dplyr::select(sitename, date, variable, values, tc_growth_leaf, tc_growth_air, ppfd_growth, vpd_growth, patm_growth)
     
     names(df_out)[names(df_out)=="values"] <- dataset
     
@@ -1277,59 +1261,168 @@ plot_two_long_df <- function(df_x,
                              df_x_dataset,
                              df_y,
                              df_y_dataset,
-                             kphio_vcmax_corr = T) {
+                             kphio_vcmax_corr = T,
+                             return_separate = F,
+                             model = "add model!") {
     
-    names(df_x)[names(df_x) == df_x_dataset] <- "x"
-    names(df_y)[names(df_y) == df_y_dataset] <- "y"
-    max        <- max(df_x$x, df_y$y)
-    df_temp    <- left_join(df_x, df_y)
     
-    if (kphio_vcmax_corr) {
-        ## Linear model for vcmax values
-        fit     <- lm(y ~ x, data = dplyr::filter(df_temp, variable == "vcmax"))
+        names(df_x)[names(df_x) == df_x_dataset] <- "x"
+        names(df_y)[names(df_y) == df_y_dataset] <- "y"
+        df_temp    <- left_join(df_x, df_y)
+        
+        # Scaling to umol:
+        df_temp$x <- df_temp$x * 10^6
+        df_temp$y <- df_temp$y * 10^6
+        df_temp$vcmax_se <- df_temp$vcmax_se * 10^6
+        df_temp$jmax_se <- df_temp$jmax_se * 10^6
+        max <- max(df_x$x, df_y$y, na.rm = T) * 10^6
+        
+        if (kphio_vcmax_corr) {
+            ## Linear model for vcmax values
+            fit     <- lm(y ~ x, data = dplyr::filter(df_temp, variable == "vcmax"))
+            sry     <- summary(fit)
+            b0      <- sry$coefficients[1, 1]
+            b1      <- sry$coefficients[2, 1]
+            df_temp$x <- df_temp$x * b1
+            
+            message(">> Phi corrected based on fitted slope. kphio scaling factor: ", round(b1, 3))
+        }
+        
+        
+    if (return_separate) {
+        ## VCMAX ...................................................................................
+        ## Subset and Model
+        df_subset <- df_temp %>% dplyr::filter(variable == "vcmax")
+        df_subset$se <- df_subset$vcmax_se
+        
+        fit     <- lm(y ~ x, data = df_subset)
         sry     <- summary(fit)
-        b0      <- sry$coefficients[1, 1]
-        b1      <- sry$coefficients[2, 1]
-        df_temp$x <- df_temp$x * b1
+        r2      <- sry$adj.r.squared %>% round(2)
+        rmse    <- sqrt( ( c(crossprod(sry$residuals)) / length(sry$residuals) ) ) %>% round(2)
         
-        message(">> Phi corrected based on fitted slope. kphio scaling factor: ", round(b1, 3))
-    }
-
-    p <- df_temp  %>%
-        ggplot() +
-        aes(x = x, y = y) +
-        geom_point() +
-        geom_smooth(method = "lm", fullrange = T) +
-        geom_abline() +
-        ggpmisc::stat_poly_eq(data = df_temp,
-                              formula = y ~ x,
-                              method = "lm",
-                              aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-                              parse = TRUE) +
-        xlab(paste(df_x_dataset)) +
-        ylab(paste(df_y_dataset)) +
-        ylim(0, max) +
-        xlim(0, max) +
-        facet_wrap(~variable, scales = "free")
-    
-    if (kphio_vcmax_corr) {
-        p <- p + labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
-    }
-    
+        ## Plot
+        pvcmax <- df_subset %>%
+            ggplot() +
+            aes(x = x, y = y) +
+            geom_errorbar(aes(ymin = y - se, ymax = y + se, color = climate_zone),
+                          alpha = 0.5) +
+            geom_point(aes(color = climate_zone),
+                       shape = 16,
+                       alpha = 0.8) +
+            geom_smooth(method = "lm", fullrange = T, color = "black") +
+            geom_abline(linetype = "dotted") +
+            ylab(bquote("Observed" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            xlab(bquote("Predicted" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            ylim(0, 200) +
+            xlim(0, 200) +
+            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                                         "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                                         "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                                         "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                                         "#64FFFF", "#F5FFFF"),
+                              name = "Koeppen-Geiger Climate Zone",
+                              guide = guide_legend(
+                                  direction = "horizontal",
+                                  title.position = "top",
+                                  ncol = 10)) +
+            labs(title = bquote(.(model) ~ "- Limitation"),
+                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset))),) +
+            theme(legend.position = "bottom", legend.justification = "center")
+            
+        ## Jmax ...................................................................................
+        ## Subset and Model
+        df_subset <- df_temp %>% dplyr::filter(variable == "jmax")
+        df_subset$se <- df_subset$jmax_se
         
+        fit     <- lm(y ~ x, data = df_subset)
+        sry     <- summary(fit)
+        r2      <- sry$adj.r.squared %>% round(2)
+        rmse    <- sqrt( ( c(crossprod(sry$residuals)) / length(sry$residuals) ) ) %>% round(2)
+        
+        ## Plot
+        pjmax <- df_subset %>%
+            ggplot() +
+            aes(x = x, y = y) +
+            geom_errorbar(aes(ymin = y - se, ymax = y + se, color = climate_zone),
+                          alpha = 0.5) +
+            geom_point(aes(color = climate_zone),
+                       shape = 16,
+                       alpha = 0.8) +
+            geom_smooth(method = "lm", fullrange = T, color = "black") +
+            geom_abline(linetype = "dotted") +
+            ylab(bquote("Observed" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            xlab(bquote("Predicted" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            ylim(0, 200) +
+            xlim(0, 200) +
+            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                                          "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                                          "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                                          "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                                          "#64FFFF", "#F5FFFF"),
+                               name = "Koeppen-Geiger Climate Zone",
+                               guide = guide_legend(
+                                   direction = "horizontal",
+                                   title.position = "top",
+                                   ncol = 10)) +
+            labs(title = bquote(.(model) ~ "- Limitation"),
+                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset))),) +
+            theme(legend.position = "bottom", legend.justification = "center")
+        
+        
+        out <- list(pvcmax = pvcmax,
+                    pjmax  = pjmax)
+        
+        return(out)
+        
+    } else {
+        ## FACET ...................................................................................
+        p <- df_temp  %>%
+            ggplot() +
+            aes(x = x, y = y) +
+            geom_point(aes(color = climate_zone)) +
+            geom_smooth(method = "lm", fullrange = T) +
+            geom_abline() +
+            ggpmisc::stat_poly_eq(data = df_temp,
+                                  formula = y ~ x,
+                                  method = "lm",
+                                  aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                                  parse = TRUE) +
+            xlab(paste(df_x_dataset)) +
+            ylab(paste(df_y_dataset)) +
+            ylim(0, max) +
+            xlim(0, max) +
+            facet_wrap(~variable, scales = "free") +
+            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
+                                          "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
+                                          "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
+                                          "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
+                                          "#64FFFF", "#F5FFFF"),
+                               name = "Koeppen-Geiger Climate Zone",
+                               guide = guide_legend(
+                                   direction = "horizontal",
+                                   title.position = "top",
+                                   ncol = 10))
+        
+        if (kphio_vcmax_corr) {
+            p <- p + labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
+        }
+        
+        return(p)
+        
+    }
     
-    return(p)
 }
 
-get_instant_vcmax_jmax <- function(df_in, ftemp_method = "kumarathunge19") {
-    
+get_instant_vcmax_jmax <- function(df_in, ftemp_method) {
+
     names_v <- df_in$rpm_accl[[1]] %>% names()
     
     df_out <- df_in %>%
         unnest(c(rpm_accl, forcing)) %>%
-        mutate(tc_leaf_dat = purrr::map_dbl(data_raw, ~ mean(.$tleaf)),
+        mutate(tc_leaf_dat = purrr::map_dbl(data_raw, ~ mean(.$tleaf, na.rm = T)),
                jmax    = jmax25  * calc_ftemp_inst_jmax(tc_leaf_dat, tc_growth_air, tc_home, method_ftemp = ftemp_method),
-               vcmax   = vcmax25 * calc_ftemp_inst_vcmax(tc_leaf_dat, tc_growth_air, method_ftemp = ftemp_method)) %>% 
+               vcmax   = vcmax25 * calc_ftemp_inst_vcmax(tc_leaf_dat, tc_growth_air, method_ftemp = ftemp_method),
+               ) %>% 
         nest(rpm_accl = any_of(names_v)) %>% 
         dplyr::select(sitename, date, rpm_accl) %>% 
         left_join(df_in %>% dplyr::select(-rpm_accl))

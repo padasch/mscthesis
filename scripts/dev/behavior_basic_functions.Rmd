@@ -1,0 +1,136 @@
+---
+title: "Analysis of Energy Balance Model"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error = F, message = FALSE, warning = FALSE, cache = TRUE)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+# Reference Data
+```{r}
+settings <- get_settings()
+
+df_ref <- tibble(tc        = 25,
+                 tc_home   = 20,
+                 vpd       = 1000,
+                 co2       = 400,
+                 ppfd      = 1500e-6,
+                 patm      = 101325,
+                 kphio     = 0.09,
+                 nsteps    = 25)
+
+gammastar  <- calc_gammastar(df_ref$tc, df_ref$patm)
+kmm        <- calc_kmm(df_ref$tc, df_ref$patm)
+```
+
+# Carboxylation Rate
+```{r}
+calc_ac(
+    ci = 27.5,
+    ca = 40.0,
+    gammastar = gammastar,
+    kmm = kmm,
+    vcmax = 70,
+    model = "analytical"
+)
+
+vec_c <- seq(0, 1000, lenght.out = 25)
+vec_ac <- rep(0, length(vec_c))
+
+
+for (i in 1:length(vec_c)) {
+    vec_ac[i] <- calc_ac(
+        ci = vec_c[i]/100,
+        ca = 40.0,
+        gammastar = gammastar,
+        kmm = kmm,
+        vcmax = 70,
+        model = "analytical"
+    )$ac
+    
+}
+
+plot(vec_c, vec_ac)
+
+```
+
+
+# Aj - Light Saturated Rate
+```{r}
+## SETUP
+nsteps <- 50
+v_ppfd <- seq(0, 3000e-6, length.out = nsteps)
+v_aj_high   <- rep(NA, length.out = nsteps)
+v_aj_low    <- rep(NA, length.out = nsteps)
+v_temp      <- seq(0, 50, length.out = nsteps)
+
+## PPFD-DEPENDENCY
+for (i in 1:nsteps) {
+  v_aj_high[i] <- calc_aj(kphio = 0.09,
+          jmax = 10/3600/24,
+          ppfd = v_ppfd[i],
+          gammastar = gammastar,
+          ci = 275,
+          ca = 400,
+          fapar = 1,
+          theta = 0.85,
+          j_method = "farquhar89",
+          model = "analytical")$aj
+
+  v_aj_low[i] <- calc_aj(kphio = 0.09,
+          jmax = 10/3600/24,
+          ppfd = v_ppfd[i],
+          gammastar = gammastar,
+          ci = 275,
+          ca = 400,
+          fapar = 1,
+          theta = 0.85,
+          j_method = "smith37",
+          model = "analytical")$aj  
+}
+
+ggplot() + 
+  geom_line(aes(v_ppfd, v_aj_high), color = "blue") +
+  geom_line(aes(v_ppfd, v_aj_low), color = "red") +
+  ggtitle("PPFD-Dependency")
+
+## TEMPERATURE-DEPENDENCY
+
+for (i in 1:nsteps) {
+  v_aj_high[i] <- calc_aj(kphio = 0.09,
+          jmax = 10/3600/24,
+          ppfd = v_ppfd[i],
+          gammastar = gammastar,
+          ci = 275,
+          ca = 400,
+          fapar = 1,
+          theta = 0.85,
+          j_method = "farquhar89",
+          model = "analytical")$aj
+
+  v_aj_low[i] <- calc_aj(kphio = 0.09,
+          jmax = 10/3600/24,
+          ppfd = v_ppfd[i],
+          gammastar = gammastar,
+          ci = 275,
+          ca = 400,
+          fapar = 1,
+          theta = 0.85,
+          j_method = "smith37",
+          model = "analytical")$aj  
+}
+
+  ggplot() + 
+  geom_line(aes(v_ppfd, v_aj_high), color = "blue") +
+  geom_line(aes(v_ppfd, v_aj_low), color = "red") +
+  ggtitle("PPFD-Dependency")
+```
+

@@ -25,25 +25,32 @@ df_drivers_k19     <- df_drivers_topt
 df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
 ```
 
-```{r fig.height=5, fig.width=6}
+```{r fig.height=5, fig.width=8}
 ## Vcmax25 Models
 ## Prescribed (from Kumarathunge 2019, Table 2)
 settings    <- get_settings()
 settings$rpmodel_inst$method_vcmax25 <- "prescribed"
 df_accl_fix <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+p_inst_fix <- df_accl_fix %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 ## Analytical
 settings$rpmodel_inst$method_vcmax25 <- "rpm_accl"
 df_accl_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+p_inst_ana <- df_accl_ana %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 ## Numerical
 settings$rpmodel_accl$method_optim   <- "numerical"
 df_accl_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
-
-## Instantaneous Model
-p_inst_fix <- df_accl_fix %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
-p_inst_ana <- df_accl_ana %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
-p_inst_num <- df_accl_num %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% plot_obs_vs_pred_mina(.)
+p_inst_num <- df_accl_num %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Plots
@@ -52,44 +59,86 @@ p2 <- p_inst_ana$plot + ggtitle("Analytically derived Vcmax25") + labs(caption =
 p3 <- p_inst_num$plot + ggtitle("Numerically derived Vcmax25") + labs(caption = NULL)
 
 p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect")
+
+## Boxplots to check for Aj limitation in prescribed vcmax
+df_box <- left_join(p_inst_fix$plot$data %>% 
+            drop_na(sitename) %>%
+            dplyr::filter(min_a_sim == "aj") %>% 
+            unnest(forcing) %>% 
+            mutate(jmax25_pft = vcmax25_pft * (2.56 - (0.0375 * tc_home) + (-0.0202 * (tc_growth_air - tc_home)))),
+          
+          p_inst_fix$plot$data %>% 
+            unnest(rpm_accl) %>% 
+            dplyr::select(sitename, date, jmax25) %>% 
+            drop_na(sitename))
+
+t.test(df_box$jmax25_pft, df_box$jmax25)    
+
+# df_box %>%
+#   dplyr::select(jmax25, jmax25_pft) %>% 
+#   pivot_longer(cols = c(jmax25, jmax25_pft), names_to = "model", values_to = "jmax25") %>% 
+#   ggplot() +
+#   aes(x = model, y = jmax25) %>% 
+#   geom_boxplot() +
+#   geom_signif(aes(x = model, y = jmax25),
+#               comparisons = list(c("jmax25", "jmax25_pft")), 
+#               map_signif_level=TRUE)
 ```
 
 
 # T_opt: Predictions - Observations
 ## Formulations
 ### Vcmax, Jmax: Kattge - Kumarathunge
-```{r}
+```{r, fig.width=5, fig.height=6}
 ## Kumarathunge
 settings   <- get_settings()
-p_inst_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Kattge
 settings$rpmodel_inst$method_ftemp <- "kattge07"
-p_inst_k07 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_k07 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Plots
-p_inst_k19$plot + ggtitle("Kumarathunge")
-p_inst_k07$plot + ggtitle("Kattge")
+p1 <- p_inst_k19$plot + ggtitle("Kumarathunge")
+p2 <- p_inst_k07$plot + ggtitle("Kattge")
+
+p1 / p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
 ```
 
 
 ### Jmax limtation: Smith - Farquhar
-```{r}
+```{r, fig.width=8.5, fig.height=4}
 ## Smith
 settings   <- get_settings()
-p_inst_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+# settings$rpmodel_accl$method_optim <- "numerical"
+p_inst_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Farquhar
+# settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
 settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
-p_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Plots
-p_inst_s37$plot + ggtitle("Smith")
-p_inst_f89$plot + ggtitle("Farquhar")
+p1 <- p_inst_s37$plot + ggtitle("Smith")
+p2 <- p_inst_f89$plot + ggtitle("Farquhar")
+
+p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
 ```
 
 
@@ -98,17 +147,31 @@ p_inst_f89$plot + ggtitle("Farquhar")
 ```{r}
 ## Atkin - Fixed ratio
 settings   <- get_settings()
-p_inst_rd25_a15 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_rd25_a15 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Kumarathunge - Acclimated ratio
 settings$rpmodel_inst$method_rd25 <- "kumarathunge19"
-p_inst_rd25_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_rd25_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Plots
 p_inst_rd25_a15$plot + ggtitle("Fixed - Atkin")
 p_inst_rd25_k19$plot + ggtitle("Acclimated - Kumarathunge")
+
+
+## Model Comparison Check -> not useful really...
+lm1 <- lm(tc_opt_obs ~ tc_opt_sim, p_inst_rd25_a15$plot$data %>% slice(-c(1,2)))
+lm2 <- lm(tc_opt_obs ~ tc_opt_sim, p_inst_rd25_k19$plot$data %>% slice(-c(1,2)))
+
+summary(lm1)
+summary(lm2)
 ```
 
 
@@ -116,17 +179,26 @@ p_inst_rd25_k19$plot + ggtitle("Acclimated - Kumarathunge")
 ```{r fig.height=6}
 ## Heskel
 settings   <- get_settings()
-p_inst_rd_h16 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_rd_h16 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Arrhenius
 settings$rpmodel_inst$method_rd <- "arrhenius"
-p_inst_rd_arr <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_rd_arr <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Q10
 settings$rpmodel_inst$method_rd <- "q10"
-p_inst_rd_q10 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% plot_obs_vs_pred_mina(.)
+p_inst_rd_q10 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
 
 
 ## Plots
@@ -202,6 +274,16 @@ p_inst_best_mne <- df_inst_best %>% plot_obs_vs_pred_mina(.)
 
 ## Plot
 p_inst_best_mne$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16 | MNE only")
+
+## Farquhar Test:
+settings <- get_settings()
+settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
+df_inst_best <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+p_test <- df_inst_best %>% plot_obs_vs_pred_mina(.)
+
+
+p_inst_best_mne$plot + ggtitle("k19 | s37 | rd25_k19 | rd_h16 | MNE only")
+p_test$plot + ggtitle("Farq")
 ```
 # --- in development:
 ## Open Question: Smith - Farquhar
@@ -241,13 +323,15 @@ p1 / p2 + plot_layout(guides = "collect")
 ```{r, fig.height=7.5, fig.width=6}
 ## Using plantecophys EB:
 settings <- get_settings()
-settings$rpmodel_accl$method_optim <- "numerical"
+# settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
 settings$rpmodel_accl$method_eb    <- "plantecophys"
 df_pl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) 
 
 ## Using tealeaves EB:
 settings <- get_settings()
-settings$rpmodel_accl$method_optim <- "numerical"
+# settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
 settings$rpmodel_accl$method_eb    <- "tealeaves"
 df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
 
@@ -256,14 +340,24 @@ df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
 p_pl_obs <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
 p_tl_obs <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
 
-p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom")
-
+(p_show <- p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+# (p_save <- p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+p_save
 
 ## Models
 p_pl_sim <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
 p_tl_sim <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
 
 p_pl_sim$plot / p_tl_sim$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+
+## STATISTICS
+lm_air <- lm(tc_opt_obs ~ tc_growth , p_pl_obs$plot$data %>% dplyr::filter(condition == "tc_growth_air"))
+lm_leaf_pl <- lm(tc_opt_obs ~ tc_growth , p_pl_obs$plot$data %>% dplyr::filter(condition == "tc_growth_leaf"))
+lm_leaf_tl <- lm(tc_opt_obs ~ tc_growth , p_tl_obs$plot$data %>% dplyr::filter(condition == "tc_growth_leaf"))
+
+# confint(lm_air,level=0.95)
+# confint(lm_leaf_pl,level=0.95)
+# confint(lm_leaf_tl,level=0.95)
 ```
 
 
@@ -304,3 +398,45 @@ settings$rpmodel_accl$method_eb <- "tealeaves"
 df_num_ <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
 df_num_ %>% plot_topt_vs_tgrowth()
 ```
+
+# BIAS ANALYSIS
+```{r fig.height=8}
+## Kumarathunge Setup
+settings   <- get_settings()
+p_inst_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
+    unnest(metainfo) %>% 
+    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+    plot_obs_vs_pred_mina(.) 
+
+df <- p_inst_k19$plot$data %>% slice(-c(1,2)) # Removing artifically added points for colorin
+
+df <- df %>% mutate(bias = (tc_opt_sim - tc_opt_obs)/tc_opt_sim*100) %>% unnest(forcing, rpm_accl)
+
+lm_bias <- lm(bias ~ vcmax25 + jmax25 + xi + vpd + co2 + patm + tc_growth_air + tc_home, data = df)
+
+crPlots(lm_bias, ylim = c(-100, 100), ylab = "Bias [%]", layout = c(3,3), col.lines = c("tomato", "blue2"),
+        smooth = FALSE, lwd = 3,
+        main = "Partial Residual Plots for Model Bias - Analytical Smith 1937")
+
+```
+
+# Checking if jmax25 prescribed is much lower than numerical
+```{r}
+
+df_test <- p_inst_num$plot$data %>% unnest(forcing, rpm_accl) %>% 
+  mutate(jmax25_ptf = vcm)
+
+df_test <- df_test %>% mutate(jmax25_pft = vcmax25_pft * (2.56 - (0.0375 * tc_home) + (-0.0202 * (tc_growth_air - tc_home))))
+
+plot(df_test$jmax25, df_test$jmax25_pft, ylim = c(0, 0.0002), xlim = c(0, 0.0002))
+abline(0, 1)
+
+
+p_inst_fix$plot$data%>% unnest(forcing, rpm_accl) %>% 
+  ggplot() +
+  geom_point(aes(x = tc_opt_sim, y = tc_opt_obs, shape = as.factor(min_a_sim), color = jmax25)) +
+  ylim(0, 40) +
+  xlim(0,40) +
+  geom_abline()
+```
+

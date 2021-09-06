@@ -32,12 +32,65 @@ convert_conductance(g_sw,
 ```
 
 
-# Plantecophys Sensitivity
+# tealeaves - plantecophys
 ```{r}
+## Setup for df_ref
+df_ref <- tibble(tc        = 25,
+                 tc_home   = 20,
+                 vpd       = 1000,
+                 co2       = 400,
+                 ppfd      = 1500e-6,
+                 patm      = 101325,
+                 nsteps    = 50)
 
+
+## Setup for df_full
+nsteps <- 10
+tc_air_v <- seq(0, 50, length.out = nsteps)
+gs_w_v   <- seq(0.5e-6, 10e-6, length.out = nsteps)
+setups   <- c("plantecophys", "tealeaves")
+l_all    <- length(tc_air_v) * length(gs_w_v) * length(setups)
+
+
+## Get tibble of varying tc_air at different gs:
+df_full <- tibble(tc_air = 1, gs_w = 1, setup = "A", tc_leaf = 1) %>% slice(-1)
+
+for (s in setups) {
+    for (g in gs_w_v) {
+        for (t in tc_air_v) {
+            df_loop <- tibble(tc_air = t, gs_w = g, setup = s)
+            df_full <- bind_rows(list(df_full, df_loop))
+        }
+    }
+}
+
+for (n in 1:nrow(df_full)) {
+    cat('\014')
+    cat(round(n/nrow(df_full)*100, 0))
+    
+    df_full$tc_leaf[n] <- calc_tc_leaf_final(
+                                  tc_air    = df_full$tc_air[n],
+                                  gs_water  = df_full$gs_w[n],
+                                  gs_input  = "prescribed",
+                                  method_eb = df_full$setup[n],
+                                  vpd       = df_ref$vpd,
+                                  co2       = df_ref$co2,
+                                  ppfd      = df_ref$ppfd * 3600 * 24,
+                                  patm      = df_ref$patm,
+                                  fapar     = 1,
+                                  kphio     = 0.25)
+}
+
+ggplot(df_full %>% mutate(setup = as.factor(setup))) +
+    aes(tc_air, tc_leaf, color = gs_w) + 
+    geom_point() + 
+    geom_abline() + 
+    facet_wrap(~setup) +
+  ylim(0, 55) +
+  xlim(0, 55)
 ```
 
-## Function Definition
+## Old: Function Definition
 ```{r}
 rpmodel_env_response <- function(df_ref   = "no_input",
                                  settings = "no_input",
@@ -126,8 +179,8 @@ rpmodel_env_response <- function(df_ref   = "no_input",
         ## WORKING CODE ...........................................................................
         
         tc_air_v <- seq(0, 50, length.out = 20)
-        gs_w_v   <- seq(1e-6, 10e-6, length.out = 10)
-        setups   <- "plantecophys"#c("plantecophys", "tealeaves")
+        gs_w_v   <- seq(0.5e-6, 10e-6, length.out = 10)
+        setups   <- c("plantecophys", "tealeaves")
         l_all    <- length(tc_air_v) * length(gs_w_v) * length(setups)
         
 

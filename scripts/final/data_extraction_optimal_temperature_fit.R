@@ -38,8 +38,10 @@ fit_nonlinear_topt <- function(dat, x = "", y = "", random = ""){
 								 # Stable:
 								 # control = list(msMaxIter=1000))
 
-								 # In development: Worked on 2021-06-23
-								 # control = nlmeControl(opt = "nlminb", maxiter=1000, lower = c(-Inf, -Inf, 0.000001))) # Parameter cannot be constrained
+								 # In development: Worked on 2021-06-23, Problem: arameter cannot be constrained
+								 # control = nlmeControl(opt = "nlminb", maxiter=1000, lower = c(-Inf, -Inf, 0.000001)))
+								 
+								 # Working update from 2021-06-23:
 								 control = nlmeControl(opt = "nlminb", maxiter=10000))
 		},
 
