@@ -13,70 +13,72 @@ calc_ci <- function(ca, gammastar, xi, vpd, patm, ci_fixed_at_ppm = NA){
 }
 
 # .............................................................................
-calc_aj <- function(kphio, ppfd, jmax, gammastar, ci, ca, fapar, theta = 0.85, j_method = "smith37", model = "analytical", gs) {
-
-    ## farquhar89: Jmax Limitation following Farquhar (1989):
-    ## smith37:    Jmax Limitation following Smith (1937):
+calc_aj <- function(kphio, ppfd, jmax, gammastar, ci = NA, ca, fapar, theta = 0.85, j_method = "smith37", model = "analytical", gs) {
     
-    ## Analytical model with given ci:
-    if (model == "analytical") {
-        
-        if (j_method == "smith37") {
-            j <- (4 * kphio * ppfd) / sqrt(1 + ((4 * kphio * ppfd)/(jmax))^2)
-        }
-        
-        if (j_method == "farquhar89") {
-            j <- (kphio * ppfd + jmax - sqrt(( kphio * ppfd + jmax)^2 - (4*kphio*theta*ppfd*jmax))) / (2*theta)
-        }
-        
-        aj    <- j/4 * (1.0 - gammastar/ci) * ci / (ci + 2*gammastar)
-        
-        out = list(aj = aj,
-                   j  =  j)
-        
-    ## Numerical model without given ci:
-    } else if (model == "numerical") {
-        
-        iabs <- ppfd * fapar
-        
-        if (j_method == "smith37") {
-            ## A = gs (ca - ci)
-            ## A = kphio * iabs * L * (ci-gammastar)/ci+2*gammastar)
-            ## L = 1 / sqrt(1 + ((4 * kphio * iabs)/jmax)^2)
-            
-            ## with
-            L <- 1.0 / sqrt(1.0 + ((4.0 * kphio * iabs)/jmax)^2)
-            A <- -gs
-            B <- gs * ca - 2 * gammastar * gs - L * kphio * iabs
-            C <- 2 * gammastar * gs * ca + L * kphio * iabs * gammastar
-            
-            ci_j <- QUADM(A, B, C)
-            j    <- 4 * kphio * iabs * L
-            aj   <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
-        }
-        
-        if (j_method == "farquhar89") {
-            ## A = gs (ca - ci)
-            ## A = j/4 * (ci-gammastar)/ci+2*gammastar)
-            ## j = (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2*theta)
-            
-            ## with
-            j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2 * theta)
-            A <- -gs
-            B <- gs * ca - 2 * gammastar * gs - j/4
-            C <- 2 * gammastar * gs * ca + gammastar * j/4
-            
-            ci_j <- ci_j <- QUADM(A, B, C)
-            aj   <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
-        }
-        
-        out = list(aj   = aj,
-                   j    =  j,
-                   ci_j = ci_j)
-        
+    ## Get iabs ....................................................................................
+    iabs <- ppfd * fapar
+    
+    ## Get J based on Jmax-Limitation formulation ..................................................
+    ## smith37:    Jmax Limitation following Smith et al. (1937):
+    if (j_method == "smith37") {j <- (4 * kphio * iabs) / sqrt(1 + ((4 * kphio * iabs)/(jmax))^2)}
+    
+    ## farquhar89: Jmax Limitation following Farquhar et al. (1989):
+    if (j_method == "farquhar89") {j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4*kphio*theta*iabs*jmax))) / (2*theta)}
+    
+    
+    ## Find ci if not given
+    if (model == "numerical" | is.na(ci)) {
+        ## Solve Eq. system:
+        ## A = gs (ca - ci)
+        ## A = j/4 * (ci-gammastar)/ci+2*gammastar)
+        ## This leads to a quadratic equation:
+        ## A * ci^2 + B * ci + C  = 0
+        ## 0 = a + b*x + c*x^2
+        ## with
+        A  <- -gs
+        B  <- gs * ca - 2 * gammastar * gs - j/4
+        C  <- 2 * gammastar * gs * ca + gammastar * j/4
+        ci <- QUADM(A, B, C)
     }
     
+    aj   <- j/4 * (ci - gammastar)/(ci + 2 * gammastar)
+    
+    out = list(aj   = aj,
+               j    =  j,
+               ci   = ci)
+    
     return(out)
+    
+    # Test Case:
+    calc_aj(kphio = 0.1, ppfd = 130, jmax=8, gs = 0.5,
+            gammastar=4, ci = NA, ca=40, fapar=1, theta = 0.85, 
+            j_method = "smith37", model = "analytical")
+}
+
+# .............................................................................
+calc_ac <- function(ci = NA, ca, gammastar, kmm, vcmax, model = "analytical", gs) {
+    
+    ## Find ci if not given: 
+    if (model == "numerical" | is.na(ci)) {
+        ## Solve Eq. system:
+        ## A = gs (ca- ci)
+        ## A = Vcmax * (ci - gammastar)/(ci + Kmm)
+        ## This leads to a quadratic equation:
+        ## A * ci^2 + B * ci + C  = 0
+        ## 0 = a + b*x + c*x^2
+        ## with
+        A  <- -1.0 * gs
+        B  <- gs * ca - gs * kmm - vcmax
+        C  <- gs * ca * kmm + vcmax * gammastar
+        ci <- QUADM(A, B, C)
+    }
+    
+    ac  <- vcmax * (ci - gammastar)/(ci + kmm)
+    out <- list(ac = ac, ci = ci)
+    
+    return(out)
+    
+    
 }
 
 # .............................................................................
@@ -664,90 +666,41 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     ca        <- co2_to_ca(co2, patm)
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
     
-    ## Electron transport is limiting
-    ## Solve quadratic equation system using: A(Fick's Law) = A(Jmax Limitation)
-    ## This leads to a quadratic equation:
-    ## A * ci^2 + B * ci + C  = 0
-    ## 0 = a + b*x + c*x^2
-    
-    ## Jmax Limitation following Smith (1937):
+
+    ## Aj following Smith (1937):
     if (method_jmaxlim_inst == "smith37") {
-        ## A = gs * (ca - ci)
-        ## A = kphio * iabs (ci-gammastar)/ci+2*gammastar) * L
-        ## L = 1 / sqrt(1 + ((4 * kphio * iabs)/jmax)^2)
-        
-        ## with
-        L <- 1.0 / sqrt(1.0 + ((4.0 * kphio * iabs)/jmax)^2)
-        A <- -gs
-        B <- gs * ca - 2 * gammastar * gs - L * kphio * iabs
-        C <- 2 * gammastar * gs * ca + L * kphio * iabs * gammastar
-        
-        ci_j <- QUADM(A, B, C)
-        a_j  <- kphio * iabs * (ci_j - gammastar)/(ci_j + 2 * gammastar) * L  
-        
+        aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "smith37", model = "numerical", gs)
+        a_j <- aj_out$aj
+        ci_j <- aj_out$ac
         c_cost <- 0.103 # As estimated by Wang et al. (2017)
     }
     
-    ## Jmax Limitation following Farquhar (1989):
+    ## Aj following Smith (1937):
     if (method_jmaxlim_inst == "farquhar89") {
-        ## A = gs * (ca - ci)
-        ## A = j/4 * (ci-gammastar)/ci+2*gammastar)
-        ## j = (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2*theta)
-        
-        ## with
-        theta <- 0.85
-        j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4 * kphio * theta * iabs * jmax))) / (2 * theta)
-        A <- -gs
-        B <- gs * ca - 2 * gammastar * gs - j/4
-        C <- 2 * gammastar * gs * ca + gammastar * j/4
-        
-        ci_j <- ci_j <- QUADM(A, B, C)
-        a_j <- j/4 * (ci_j - gammastar)/(ci_j + 2 * gammastar)
-        
+        aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "farquhar89", model = "numerical", gs)
+        a_j <- aj_out$aj
+        ci_j <- aj_out$ac
         c_cost <- 0.053 # As estimated by Smith et al. (2019)
     }
     
-    ## Rubisco is limiting
-    ## Solve Eq. system
-    ## A = gs (ca- ci)
-    ## A = Vcmax * (ci - gammastar)/(ci + Kmm)
-    
-    ## This leads to a quadratic equation:
-    ## A * ci^2 + B * ci + C  = 0
-    ## 0 = a + b*x + c*x^2
-    
-    ## with
-    A <- -1.0 * gs
-    B <- gs * ca - gs * kmm - vcmax
-    C <- gs * ca * kmm + vcmax * gammastar
-    
-    ci_c <- QUADM(A, B, C)
-    a_c <- vcmax * (ci_c - gammastar) / (ci_c + kmm)
+    ## Ac following FvCB-Model: 
+    ac_out <- calc_ac(ci=NA, ca, gammastar, kmm, vcmax, model = "numerical", gs)
+    ci_c <- ac_out$ci
+    a_c  <- ac_out$ac
     
     ## Take minimum of the two assimilation rates and maximum of the two ci
     assim <- min( a_j, a_c )
-    # assim <- -QUADP(A = 1 - 1E-07, B = a_c + a_j, C = a_c*a_j)
-    ci <- max(ci_c, ci_j)
+    ci    <- max(ci_c, ci_j)
     
-    ## only cost ratio is defined. for this here we need absolute values. Set randomly
+    ## Individual costs
     cost_transp <- 1.6 * ns_star * gs * vpd
     cost_vcmax  <- beta * vcmax
     cost_jmax   <- c_cost * jmax
     
     ## Option B: This is equivalent to the P-model with its optimization of ci:ca.
-    if (assim<=0) {
-        net_assim <- -(999999999.9)
-    } else {
-        net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
-        # net_assim <- -(cost_transp + cost_vcmax) / assim
-        # net_assim <- -((cost_transp + cost_vcmax) / a_c + (cost_jmax/a_j))
-    }
-    
+    if (assim<=0) { net_assim <- -(999999999.9)} 
+    else {net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim}
     if (maximize) net_assim <- -net_assim
-     
-    # print(par)
-    # print(net_assim)
-    
     if (return_all) {
         return(
             tibble(

@@ -23,8 +23,13 @@ suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
 # Sanity Checks
 ## Function definition
 ```{r}
-get_df_ref <- function(settings = settings){
-    df_ref <- tibble(tc        = 25,
+get_df_ref <- function(settings = NA){
+    
+    if(is.na(settings)) settings <- get_settings
+    
+    df_ref <- tibble(
+                     ## Environment:
+                     tc        = 25,
                      tc_home   = 20,
                      vpd       = 1000,
                      co2       = 400,
@@ -32,6 +37,13 @@ get_df_ref <- function(settings = settings){
                      patm      = 101325,
                      fapar     = 1,
                      kphio     = settings$rpmodel_accl$kphio_calib,
+                     
+                     ## Photosynthetic variables
+                     kmm       = calc_kmm(25, 101325),
+                     gammastar = calc_gammastar(25, 101325),
+                     ns_star   = 1,
+                     
+                     ## Parameters
                      nsteps    = 10,
                      vcmax_start = 2,
                      jmax_start = 8,
@@ -393,7 +405,9 @@ p_s37 <- rpmodel_env_response(settings = settings,
                               # df_full = p_s37$data,
                               p_output = "per_target")
 
+p_s37$plot[[1]] + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
 p_s37$plot[[2]] + ylim(0, 100) + theme(legend.position = "bottom") + xlab("")
+p_s37$plot[[3]] + ylim(0, 100) + theme(legend.position = "bottom") + xlab("")
 ```
 
 
