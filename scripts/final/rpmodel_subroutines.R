@@ -587,7 +587,7 @@ VPDtoRH <- function(VPD, TdegC, Pa=101){
 # ENERGY BALANCE ####
 # .........................................................
 
-calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
+calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
                                            patm = 101325,
                                            co2 = 400,
                                            vpd = 1000,
@@ -606,7 +606,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
         lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
         upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*2 ),
         fn         = optimise_this_tcleaf_vcmax_jmax,
-        args       = c(tc_leaf, patm, co2, vpd),
+        args       = c(tc_air, patm, co2, vpd),
         iabs       = (ppfd * fapar),
         kphio      = kphio,
         beta       = beta,
@@ -619,7 +619,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_leaf = 25,
     
     varlist <- optimise_this_tcleaf_vcmax_jmax(
         par = out_optim$par,
-        args = c(tc_leaf, patm, co2, vpd),
+        args = c(tc_air, patm, co2, vpd),
         iabs = (fapar * ppfd),
         kphio,
         beta,
@@ -654,12 +654,19 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     jmax  <- par[3]
     
     ## Arguments to calculate variables
-    tc_leaf <- args[1]
+    tc_air  <- args[1]
     patm    <- args[2]
     co2     <- args[3]
     vpd     <- args[4]
     
-    ## Local variables based on arguments -> TODO: maybe move this to outside?
+    ## .................................................................................................
+    ## Energy Balance Development -> get tc_leaf from tc_air
+    ## If no energy balance:
+    tc_leaf <- tc_air
+    
+    ## .................................................................................................
+    
+    ## Local variables based on arguments
     kmm       <- calc_kmm(tc_leaf, patm)
     gammastar <- calc_gammastar(tc_leaf, patm)
     ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
@@ -667,6 +674,7 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
     
 
+    
     ## Aj following Smith (1937):
     if (method_jmaxlim_inst == "smith37") {
         aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "smith37", model = "numerical", gs)
@@ -718,7 +726,8 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
                 cost_vcmax = cost_vcmax,
                 cost_jmax = cost_jmax,
                 net_assim = net_assim,
-                method_jmaxlim_inst = method_jmaxlim_inst
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                tc_leaf = tc_leaf
             )
         )
     } else {

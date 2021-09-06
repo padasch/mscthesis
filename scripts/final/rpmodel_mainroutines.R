@@ -233,14 +233,14 @@ rpmodel <- function(
         if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
         if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
         
-        final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_growth_leaf,
-                                                  patm = patm,
-                                                  co2 = co2,
-                                                  vpd = vpd,
-                                                  ppfd = ppfd * 3600 * 24,
-                                                  fapar = fapar,
-                                                  kphio = kphio,
-                                                  method_jmaxlim_inst = method_jmaxlim)
+        final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_air = tc_growth_leaf,
+                                                    patm = patm,
+                                                    co2 = co2,
+                                                    vpd = vpd,
+                                                    ppfd = ppfd * 3600 * 24,
+                                                    fapar = fapar,
+                                                    kphio = kphio,
+                                                    method_jmaxlim_inst = method_jmaxlim)
         
         ## Check if optimization converged
         opt_convergence <- final_opt$out_optim$convergence
