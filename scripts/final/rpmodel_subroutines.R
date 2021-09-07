@@ -588,18 +588,19 @@ VPDtoRH <- function(VPD, TdegC, Pa=101){
 # .........................................................
 
 calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
-                                           patm = 101325,
-                                           co2 = 400,
-                                           vpd = 1000,
-                                           ppfd = 130,
-                                           fapar = 1,
-                                           kphio = 0.05,
-                                           beta = 146,
-                                           c_cost = 0.41,
-                                           vcmax_start = 2,
-                                           gs_start = 0.6,
-                                           jmax_start = 8,
-                                           method_jmaxlim_inst) {
+                                       patm = 101325,
+                                       co2 = 400,
+                                       vpd = 1000,
+                                       ppfd = 130,
+                                       fapar = 1,
+                                       kphio = 0.05,
+                                       beta = 146,
+                                       c_cost = 0.41,
+                                       vcmax_start = 2,
+                                       gs_start = 0.6,
+                                       jmax_start = 8,
+                                       method_jmaxlim_inst = "smith37",
+                                       method_eb = "none") {
     
     out_optim <- optimr::optimr(
         par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
@@ -612,9 +613,10 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
         beta       = beta,
         c_cost     = c_cost/4,
         method_jmaxlim_inst = method_jmaxlim_inst,
+        method_eb  = method_eb,
         method     = "L-BFGS-B",
         maximize   = TRUE,
-        control    = list(maxit=1000)
+        control    = list(maxit=100)
     )
     
     varlist <- optimise_this_tcleaf_vcmax_jmax(
@@ -625,6 +627,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
         beta,
         c_cost / 4,
         method_jmaxlim_inst,
+        method_eb,
         maximize = FALSE,
         return_all = TRUE
     )
@@ -644,6 +647,7 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
                                            beta = 146,
                                            c_cost = NA,
                                            method_jmaxlim_inst,
+                                           method_eb,
                                            maximize = FALSE,
                                            return_all = FALSE) {
     
@@ -660,16 +664,61 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     vpd     <- args[4]
     
     ## .................................................................................................
+    ## Call energy balance function
+    
     ## Energy Balance Development -> get tc_leaf from tc_air
     ## If no energy balance:
     tc_leaf  <- tc_air
     
-    ## .................................................................................................
-    ## VPD LEAF CALCULATION: DOES NOT WORK YET
-    vpd_leaf  <- VPDairToLeaf(vpd/1000, tc_air, tc_leaf, patm/1000) * 1000
+    ## With energy balance:
+    ppfd <- iabs # Only true if fapar = 1
+    
+    if (method_eb == "plantecophys") {
+        ## 2.1: Via plantecophys energy balance
+        tc_leaf <- try(calc_tc_leaf_from_tc_air(tc_air = tc_air,
+                                                gs     = gs*1.6,
+                                                vpd    = vpd,
+                                                patm   = patm,
+                                                ppfd   = ppfd))
+        
+        if (inherits(tc_leaf, "try-error")) {
+            tc_leaf <- tc_air
+            message("plantecophys failed")
+        }
+    } 
+    if (method_eb == "tealeaves") {
+        ## 2.2: Via tealeaves energy balance
+        
+        # Get relative humidity from vpd
+        RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
+        
+        # Get incident short-wave radiation flux density from ppfd
+        S_sw <- ppfd / (24*3600) / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
+        
+        # Get leaf parameters:
+        leaf_par <- make_leafpar(
+            replace = list(
+                g_sw = set_units(gs * 1.6 / (24*3600) * 10^6, "umol/m^2/s/Pa")))
+        
+        # Get environmental parameters:
+        enviro_par <- make_enviropar(
+            replace = list(
+                T_air = set_units(tc_air + 273.15, "K"),
+                S_sw  = set_units(S_sw, "W/m^2"), 
+                RH    = set_units(RH),
+                P     = set_units(patm, "Pa")))
+        
+        # Get physical constants:
+        constants  <- make_constants()
+        
+        # Get tc_leaf:
+        tc_leaf <- tleaf(leaf_par, enviro_par, constants, quiet = T)$T_leaf %>% 
+            set_units("degree_Celsius") %>% drop_units()
+    }
     ## .................................................................................................
     
     ## Local variables based on arguments
+    vpd_leaf  <- VPDairToLeaf(vpd/1000, tc_air, tc_leaf, patm/1000) * 1000
     kmm       <- calc_kmm(tc_leaf, patm)
     gammastar <- calc_gammastar(tc_leaf, patm)
     ns_star   <- calc_viscosity_h2o(tc_leaf, patm) / calc_viscosity_h2o(25, 101325)
@@ -677,12 +726,11 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
     
 
-    
     ## Aj following Smith (1937):
     if (method_jmaxlim_inst == "smith37") {
         aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "smith37", model = "numerical", gs)
         a_j <- aj_out$aj
-        ci_j <- aj_out$ac
+        ci_j <- aj_out$ci
         c_cost <- 0.103 # As estimated by Wang et al. (2017)
     }
     
@@ -690,7 +738,7 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     if (method_jmaxlim_inst == "farquhar89") {
         aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "farquhar89", model = "numerical", gs)
         a_j <- aj_out$aj
-        ci_j <- aj_out$ac
+        ci_j <- aj_out$ci
         c_cost <- 0.053 # As estimated by Smith et al. (2019)
     }
     
@@ -709,9 +757,14 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
     cost_jmax   <- c_cost * jmax
     
     ## Option B: This is equivalent to the P-model with its optimization of ci:ca.
-    if (assim<=0) { net_assim <- -(999999999.9)} 
-    else {net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim}
+    if (assim<=0) {
+        net_assim <- -(999999999.9)
+    } else {
+        net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
+    }
+    
     if (maximize) net_assim <- -net_assim
+    
     if (return_all) {
         return(
             tibble(
@@ -730,7 +783,8 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
                 cost_jmax = cost_jmax,
                 net_assim = net_assim,
                 method_jmaxlim_inst = method_jmaxlim_inst,
-                tc_leaf = tc_leaf
+                tc_leaf = tc_leaf,
+                kphio = kphio
             )
         )
     } else {
@@ -837,39 +891,16 @@ calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
     
     
     # Use uniroots():
-    sol_optimr <- uniroot(LeafEnergyBalance,
-            interval = c(tc_air-30, tc_air+30), 
-            Tair = tc_air,
+    sol_optimr <- try(uniroot(LeafEnergyBalance,
+            interval = c(max(7, tc_air-30), tc_air+30),
+            Tair      = tc_air,
             gs        = gs,        # input in mol/m2/d/Pa
             VPD       = vpd,       # input in Pa
             Patm      = patm,      # input in Pa
             PPFD      = ppfd,      # input in mol/m2/d
-            returnwhat = "diff")
-    
+            returnwhat = "diff"))
+
     out <- sol_optimr$root
-    
-    # sol_optimr <-	optimr::optimr(
-    #     # Parameter boundaries to optimize within:
-    #     par       = tc_air,
-    #     lower     = tc_air - 30,
-    #     upper     = tc_air + 30,
-    #     
-    #     # Function to optimize and its inputs:
-    #     fn        = LeafEnergyBalance,
-    #     Tair      = tc_air,    # input in degC
-    #     gs        = gs,        # input in mol/m2/d/Pa
-    #     VPD       = vpd,       # input in Pa
-    #     Patm      = patm,      # input in Pa
-    #     PPFD      = ppfd,      # input in mol/m2/d
-    #     Wind      = wind,      # input in m/s
-    #     Wleaf     = wleaf,
-    #     StomatalRatio = stoma_r,        # 2 for amphistomatous
-    #     LeafAbs   = leaf_abs,
-    #     
-    #     # Optimr settings:
-    #     method    = "L-BFGS-B",
-    #     control   = list( maxit = 100))
-    # out <- sol_optimr$par
     
     return(out)
 }
@@ -1012,6 +1043,70 @@ calc_tc_leaf_final <- function(tc_air    = 25,
     return(tc_leaf)
 }
 
+## .................................................................................................
+calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
+                                               gs,     # mol/m2/s
+                                               vpd,    # Pa
+                                               patm,   # Pa
+                                               ppfd,   # mol/m2/s
+                                               method_eb # model: plantecophys, tealeaves
+                                               ) {
+    
+    ## .............................................................................................
+    ## This function calls either the plantecophy or tealeaves energy balance and returns
+    ## the leaf temperature that closes the energy balance.
+    ## Function takes a fixed input of gs.
+    ## .............................................................................................
+    
+    if (method_eb == "plantecophys") {
+        sol_optimr <- try(uniroot(LeafEnergyBalance,
+                                  interval = c(tc_air-30), tc_air+30),
+                                  Tair      = tc_air,
+                                  gs        = gs,
+                                  VPD       = vpd,
+                                  Patm      = patm,
+                                  PPFD      = ppfd,
+                                  returnwhat = "diff")
+        
+        tc_leaf_out <- sol_optimr$root
+    }
+    
+    if (method_eb == "tealeaves") {
+        # Get relative humidity from vpd
+        RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
+        
+        # Get incident short-wave radiation flux density from ppfd
+        S_sw <- ppfd / (24*3600) * 10^6 / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
+        
+        # Get leaf parameters:
+        leaf_par <- make_leafpar(
+            replace = list(
+                g_sw = set_units(gs_water*10^6, "umol/m^2/s/Pa")))
+        
+        # Get environmental parameters:
+        enviro_par <- make_enviropar(
+            replace = list(
+                T_air = set_units(tc_air + 273.15, "K"),
+                S_sw  = set_units(S_sw, "W/m^2"), 
+                RH    = set_units(RH),
+                P     = set_units(patm, "Pa")))
+        
+        # Get physical constants:
+        constants  <- make_constants()
+        
+        # Get tc_leaf:
+        tc_leaf_leb <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
+            set_units("degree_Celsius") %>% drop_units()
+    }
+    
+    if (!(method_eb %in% c("plantecophys", "tealeaves"))) {
+        warning("No energy balance model selected")
+    }
+    
+    return(out)
+}
+
+## .................................................................................................
 # PLOTTING FUNCTIONS ####
 # .............................................................................
 

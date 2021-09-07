@@ -35,13 +35,7 @@ convert_conductance(g_sw,
 # tealeaves - plantecophys
 ```{r}
 ## Setup for df_ref
-df_ref <- tibble(tc        = 25,
-                 tc_home   = 20,
-                 vpd       = 1000,
-                 co2       = 400,
-                 ppfd      = 1500e-6,
-                 patm      = 101325,
-                 nsteps    = 50)
+df_ref <- get_df_ref(settings = get_settings())
 
 
 ## Setup for df_full
@@ -68,17 +62,63 @@ for (n in 1:nrow(df_full)) {
     cat('\014')
     cat(round(n/nrow(df_full)*100, 0))
     
-    df_full$tc_leaf[n] <- calc_tc_leaf_final(
-                                  tc_air    = df_full$tc_air[n],
-                                  gs_water  = df_full$gs_w[n],
-                                  gs_input  = "prescribed",
-                                  method_eb = df_full$setup[n],
-                                  vpd       = df_ref$vpd,
-                                  co2       = df_ref$co2,
-                                  ppfd      = df_ref$ppfd * 3600 * 24,
-                                  patm      = df_ref$patm,
-                                  fapar     = 1,
-                                  kphio     = 0.25)
+    vpd  <- df_ref$vpd
+    patm <- df_ref$patm
+    ppfd <- df_ref$ppfd* 3600 * 24
+    
+    ## .................................................................................................
+    ## New version with single optimization:
+        if (df_full$setup[n] == "plantecophys") {
+        ## 2.1: Via plantecophys energy balance
+        df_full$tc_leaf[n] <- calc_tc_leaf_from_tc_air(tc_air    = df_full$tc_air[n],
+                                                       gs        = df_full$gs_w[n],
+                                                       vpd       = vpd,
+                                                       patm      = patm,
+                                                       ppfd      = ppfd)
+        
+    } else if (df_full$setup[n] == "tealeaves") {
+        ## 2.2: Via tealeaves energy balance
+        
+        # Get relative humidity from vpd
+        RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
+        
+        # Get incident short-wave radiation flux density from ppfd
+        S_sw <- ppfd / (24*3600) * 10^6 / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
+        
+        # Get leaf parameters:
+        leaf_par <- make_leafpar(
+            replace = list(
+                g_sw = set_units(df_full$gs_w[n]*10^6, "umol/m^2/s/Pa")))
+        
+        # Get environmental parameters:
+        enviro_par <- make_enviropar(
+            replace = list(
+                T_air = set_units(df_full$tc_air[n] + 273.15, "K"),
+                S_sw  = set_units(S_sw, "W/m^2"), 
+                RH    = set_units(RH),
+                P     = set_units(patm, "Pa")))
+        
+        # Get physical constants:
+        constants  <- make_constants()
+        
+        # Get tc_leaf:
+        df_full$tc_leaf[n] <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
+            set_units("degree_Celsius") %>% drop_units()
+    }
+
+    ## .................................................................................................
+    ## Old version with double optimization:
+    # df_full$tc_leaf[n] <- calc_tc_leaf_final(
+    #                               tc_air    = df_full$tc_air[n],
+    #                               gs_water  = df_full$gs_w[n],
+    #                               gs_input  = "prescribed",
+    #                               method_eb = df_full$setup[n],
+    #                               vpd       = df_ref$vpd,
+    #                               co2       = df_ref$co2,
+    #                               ppfd      = df_ref$ppfd * 3600 * 24,
+    #                               patm      = df_ref$patm,
+    #                               fapar     = 1,
+    #                               kphio     = 0.25)
 }
 
 ggplot(df_full %>% mutate(setup = as.factor(setup))) +

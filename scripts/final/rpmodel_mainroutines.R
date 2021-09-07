@@ -47,21 +47,6 @@ rpmodel <- function(
       patm <- patm(elv)
   }
   
-  
-  ## Quantum yield efficiency given or take reported values? - TODO
-  # if (kphio == "reported") {
-  #   if (method_jmaxlim == "wang17" | method_jmaxlim == "smith37") {
-  #     kphio_correction <- 2.866         # Correction based on pred-obs slope run with reported values?
-  #     kpio_est         <- 0.085         # 0.085: phi as reported by Wang et al. (2017) 
-  #     kphio <- kpio_est * kphio_correction 
-  # 
-  #   if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89") {
-  #     kphio_correction <- 1             ## Correction based on pred-obs slope run with reported values?
-  #     kphio <- 0.257 * kphio_correction ## 0.257: phi as reported by Smith et al. (2019) 
-  #     }
-  #   }
-  # }
-  
   ## kphio corrections based for analytical LUE models:
   if (F && method_optim == "analytical") {
     if (method_jmaxlim == "wang17"  | method_jmaxlim == "smith37") {kphio <- kphio * 2.585}
@@ -76,7 +61,6 @@ rpmodel <- function(
       }
   }
   
-
   
   ## Get constants ####
   c_molmass <- 12.0107  # molecular mass of carbon (g)
@@ -84,217 +68,183 @@ rpmodel <- function(
   kTo <- 25.0           # base temperature, deg C (Prentice, unpublished)
   rd_to_vcmax <- 0.015  # Ratio of Rdark to Vcmax25, number from Atkin et al., 2015 for C3 herbaceous
   
-  
-  ## Run energy balance ####
-  if (method_eb != "off") {
+  ## Analytical model ####
+  if (method_optim == "analytical") {
     
-    if (method_optim == "analytical") {
-      message("Attention: Analytical + Energy Balance does not make much sense...")
-    } else {
-      message("Running with energy balance model: ", method_eb)
-    }
-      
-      if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
-      if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
-      
-      tc_growth_leaf <- calc_tc_leaf_final(tc_air    = tc_growth_air,
-                                           ppfd      = ppfd * 3600 * 24, # Input has to be in mol/m2/d
-                                           fapar     = fapar,
-                                           co2       = co2,
-                                           patm      = patm,
-                                           vpd       = vpd,
-                                           kphio     = kphio,
-                                           method_jmaxlim_inst = method_jmaxlim,
-                                           method_eb = method_eb)
-    } else {
-        tc_growth_leaf <- tc_growth_air
-    }
-    
-    ## Get model-independent variables ####
+    ## Get underlying variables    
+    tc_growth_leaf <- tc_growth_air
     if (do_ftemp_kphio) { ftemp_kphio <- calc_ftemp_kphio( tc_growth_leaf, c4 ) }
     if (do_soilmstress) { soilmstress <- soilmstress( soilm, meanalpha, apar_soilm, bpar_soilm ) }
-    
     ca         <- co2_to_ca( co2, patm )
     gammastar  <- calc_gammastar( tc_growth_leaf, patm )
     kmm        <- calc_kmm( tc_growth_leaf, patm )
     ns_star    <- calc_viscosity_h2o( tc_growth_leaf, patm ) / calc_viscosity_h2o( kTo, kPo )  # (unitless)
     xi         <- sqrt( (beta * ( kmm + gammastar ) ) / ( 1.6 * ns_star ) )
     kphio_accl <- kphio * ftemp_kphio
-    
-        
-    ## Analytical model ####
-    if (method_optim == "analytical") {
-        
 
-        ### Get chi ####
-        ## The heart of the P-model: calculate ci:ca ratio (chi) and additional terms
+    ### Get chi ####
+    ## The heart of the P-model: calculate ci:ca ratio (chi) and additional terms
 
-        if (c4){
-            out_optchi <- calc_chi_c4()
-            
-        } else if (method_optci == "prentice14"){
-            out_optchi <- calc_optimal_chi( kmm, gammastar, ns_star, ca, vpd, beta )
-            
-        } else {
-            stop("rpmodel(): argument method_optci not idetified.")
-            
-        }
+    if (c4){
+        out_optchi <- calc_chi_c4()
         
+    } else if (method_optci == "prentice14"){
+        out_optchi <- calc_optimal_chi( kmm, gammastar, ns_star, ca, vpd, beta )
         
-        ## Get vcmax and jmax ####
-        if (c4){
-            
-            out_lue_vcmax <- calc_lue_vcmax_c4(
-                kphio,
-                ftemp_kphio,
-                c_molmass,
-                soilmstress
-            )
-            
-        } else if (method_jmaxlim == "wang17" | method_jmaxlim == "smith37"){
-            
-            ## apply correction by Jmax limitation
-            out_lue_vcmax <- calc_lue_vcmax_wang17(
-                out_optchi,
-                kphio,
-                ftemp_kphio,
-                c_molmass,
-                soilmstress
-            )
-            
-            
-            
-        } else if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89"){
-            
-            out_lue_vcmax <- calc_lue_vcmax_smith19(
-                out_optchi,
-                kphio,
-                ftemp_kphio,
-                c_molmass,
-                soilmstress
-            )
-            
-        } else if (method_jmaxlim=="none"){
-            
-            out_lue_vcmax <- calc_lue_vcmax_none(
-                out_optchi,
-                kphio,
-                ftemp_kphio,
-                c_molmass,
-                soilmstress
-            )
-            
-        } else {
-            
-            stop("rpmodel(): argument method_jmaxlim not idetified.")
-            
-        }
+    } else {
+        stop("rpmodel(): argument method_optci not idetified.")
         
-        ## Corrolaries ####
-        chi        <- out_optchi$chi
-        xi         <- out_optchi$xi
-        ci         <- chi * ca # leaf-internal CO2 partial pressure (Pa)
-        iwue       <- ( ca - ci ) / 1.6  # intrinsic water use efficiency (in Pa)
-        
-        ## Scalings with Iabs:
-        iabs <- fapar * ppfd
-        
-        # Gross Primary Productivity
-        gpp <- iabs * out_lue_vcmax$lue   # in g C m-2 s-1
-        
-        # Carboxylation rate
-        ftemp_vcmax       <- calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
-        vcmax             <- iabs * out_lue_vcmax$vcmax_unitiabs
-        vcmax25           <- vcmax / ftemp_vcmax
-        ac                <- calc_ac(ci, ca = co2, gammastar, kmm, vcmax, model = method_optim)$ac
-        
-        ## Electron transport rate
-        jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = method_jmaxlim)
-        ftemp_jmax        <- calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
-        jmax25            <- jmax / ftemp_jmax
-        aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim)$aj
-        
-        ## Dark respiration
-        ftemp_inst_rd      <- calc_ftemp_inst_rd( tc_growth_leaf )
-        rd_unitiabs        <- rd_to_vcmax * (ftemp_inst_rd / ftemp_vcmax) * out_lue_vcmax$vcmax_unitiabs
-        rd                 <- iabs * rd_unitiabs
-        
-        ## Gross assimilation
-        a_gross <- ifelse(aj < ac , aj, ac)
-        
-        ## Average stomatal conductance
-        gs <- a_gross / (ca - ci)
-        
-    } else if (method_optim == "numerical") {
-        
-          ## Numerical Model ####
-        ## Get optimal vcmax, jmax and gs
-      
-        if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
-        if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
-        
-        final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_air = tc_growth_leaf,
-                                                    patm = patm,
-                                                    co2 = co2,
-                                                    vpd = vpd,
-                                                    ppfd = ppfd * 3600 * 24,
-                                                    fapar = fapar,
-                                                    kphio = kphio,
-                                                    method_jmaxlim_inst = method_jmaxlim)
-        
-        ## Check if optimization converged
-        opt_convergence <- final_opt$out_optim$convergence
-      
-        ## Extract optimized parameters
-        varlist_optim <- final_opt$varlist
-        
-        chi     <- varlist_optim$chi_mine
-        ci      <- varlist_optim$ci_mine
-        xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
-        gs      <- varlist_optim$gs_mine
-        vcmax   <- varlist_optim$vcmax_mine
-        jmax    <- varlist_optim$jmax_mine
-        vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
-        jmax25  <- jmax  /  calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
-        a_gross <- varlist_optim$assim
-        
-        if (F) {
-          message("USING JV RATIO FOR JMAX!")
-          vcmax   <- varlist_optim$vcmax_mine
-          vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
-          jmax25  <- vcmax25 * (2.56 - (0.0375 * tc_home) + (-0.0202 * (tc_growth_air - tc_home)))
-          jmax    <- jmax25 * calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
-          
-        }
-  
     }
     
-    ## Output definition ####
-    out <- tibble(
-        # gpp             = gpp,   # remove this again later
-        # ca              = ca,
-        # gammastar       = gammastar,
-        # kmm             = kmm,
-        # ns_star         = ns_star,
-        chi               = chi,
-        xi                = xi,
-        # mj              = out_optchi$mj,
-        # mc              = out_optchi$mc,
-        ci                = ci,
-        # iwue              = iwue,
-        gs                = gs,
-        vcmax             = vcmax,
-        vcmax25           = vcmax25,
-        jmax              = jmax,
-        jmax25            = jmax25,
-        kphio             = kphio_accl,
-        tc_growth_leaf    = tc_growth_leaf,
-        # rd              = rd,
-        opt_convergence   = opt_convergence,
-        a_gross           = a_gross
-    )
     
-    return( out )
+    ## Get vcmax and jmax ####
+    if (c4){
+        
+        out_lue_vcmax <- calc_lue_vcmax_c4(
+            kphio,
+            ftemp_kphio,
+            c_molmass,
+            soilmstress
+        )
+        
+    } else if (method_jmaxlim == "wang17" | method_jmaxlim == "smith37"){
+        
+        ## apply correction by Jmax limitation
+        out_lue_vcmax <- calc_lue_vcmax_wang17(
+            out_optchi,
+            kphio,
+            ftemp_kphio,
+            c_molmass,
+            soilmstress
+        )
+        
+        
+        
+    } else if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89"){
+        
+        out_lue_vcmax <- calc_lue_vcmax_smith19(
+            out_optchi,
+            kphio,
+            ftemp_kphio,
+            c_molmass,
+            soilmstress
+        )
+        
+    } else if (method_jmaxlim=="none"){
+        
+        out_lue_vcmax <- calc_lue_vcmax_none(
+            out_optchi,
+            kphio,
+            ftemp_kphio,
+            c_molmass,
+            soilmstress
+        )
+        
+    } else {
+        
+        stop("rpmodel(): argument method_jmaxlim not idetified.")
+        
+    }
+    
+    ## Corrolaries ####
+    chi        <- out_optchi$chi
+    xi         <- out_optchi$xi
+    ci         <- chi * ca # leaf-internal CO2 partial pressure (Pa)
+    iwue       <- ( ca - ci ) / 1.6  # intrinsic water use efficiency (in Pa)
+    
+    ## Scalings with Iabs:
+    iabs <- fapar * ppfd
+    
+    # Gross Primary Productivity
+    gpp <- iabs * out_lue_vcmax$lue   # in g C m-2 s-1
+    
+    # Carboxylation rate
+    ftemp_vcmax       <- calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
+    vcmax             <- iabs * out_lue_vcmax$vcmax_unitiabs
+    vcmax25           <- vcmax / ftemp_vcmax
+    ac                <- calc_ac(ci, ca = co2, gammastar, kmm, vcmax, model = method_optim)$ac
+    
+    ## Electron transport rate
+    jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = method_jmaxlim)
+    ftemp_jmax        <- calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+    jmax25            <- jmax / ftemp_jmax
+    aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim)$aj
+    
+    ## Dark respiration
+    ftemp_inst_rd      <- calc_ftemp_inst_rd( tc_growth_leaf )
+    rd_unitiabs        <- rd_to_vcmax * (ftemp_inst_rd / ftemp_vcmax) * out_lue_vcmax$vcmax_unitiabs
+    rd                 <- iabs * rd_unitiabs
+    
+    ## Gross assimilation
+    a_gross <- ifelse(aj < ac , aj, ac)
+    
+    ## Average stomatal conductance
+    gs <- a_gross / (ca - ci)
+  }
+  
+  ## Numerical Model ####
+  if (method_optim == "numerical") {
+    
+    ## Get optimal vcmax, jmax and gs
+  
+    if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
+    if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
+    
+    final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_air = tc_growth_air,
+                                                patm = patm,
+                                                co2 = co2,
+                                                vpd = vpd,
+                                                ppfd = ppfd * 3600 * 24,
+                                                fapar = fapar,
+                                                kphio = kphio,
+                                                method_jmaxlim_inst = method_jmaxlim,
+                                                method_eb = method_eb)
+    
+    ## Check if optimization converged
+    opt_convergence <- final_opt$out_optim$convergence
+  
+    ## Extract optimized parameters
+    varlist_optim <- final_opt$varlist
+    
+    chi     <- varlist_optim$chi_mine
+    ci      <- varlist_optim$ci_mine
+    xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
+    gs      <- varlist_optim$gs_mine
+    vcmax   <- varlist_optim$vcmax_mine
+    jmax    <- varlist_optim$jmax_mine
+    tc_growth_leaf <- varlist_optim$tc_leaf
+    vcmax25 <- vcmax /  calc_ftemp_inst_vcmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, method_ftemp = method_ftemp)
+    jmax25  <- jmax  /  calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
+    a_gross <- varlist_optim$assim
+    kphio_accl <- varlist_optim$kphio
+  }
+    
+  ## Output definition ####
+  out <- tibble(
+      # gpp             = gpp,   # remove this again later
+      # ca              = ca,
+      # gammastar       = gammastar,
+      # kmm             = kmm,
+      # ns_star         = ns_star,
+      chi               = chi,
+      xi                = xi,
+      # mj              = out_optchi$mj,
+      # mc              = out_optchi$mc,
+      ci                = ci,
+      # iwue              = iwue,
+      gs                = gs,
+      vcmax             = vcmax,
+      vcmax25           = vcmax25,
+      jmax              = jmax,
+      jmax25            = jmax25,
+      kphio             = kphio_accl,
+      tc_growth_leaf    = tc_growth_leaf,
+      # rd              = rd,
+      opt_convergence   = opt_convergence,
+      a_gross           = a_gross
+  )
+    
+  return( out )
 }
 
 
