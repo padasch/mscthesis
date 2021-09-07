@@ -584,50 +584,73 @@ VPDtoRH <- function(VPD, TdegC, Pa=101){
 }
 
 # .............................................................................
-# ENERGY BALANCE ####
+# ENERGY BALANCE + NUMERICAL####
 # .........................................................
-
-calc_optimal_gs_vcmax_jmax <- function(tc_air = 25,
-                                       patm = 101325,
-                                       co2 = 400,
-                                       vpd = 1000,
-                                       ppfd = 130,
-                                       fapar = 1,
-                                       kphio = 0.05,
-                                       beta = 146,
-                                       c_cost = 0.41,
-                                       vcmax_start = 2,
-                                       gs_start = 0.6,
-                                       jmax_start = 8,
-                                       method_jmaxlim_inst = "smith37",
-                                       method_eb = "none") {
+calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
+                                       patm, # Input in: Pa
+                                       co2, # Input in: Pa
+                                       vpd, # Input in: Pa
+                                       ppfd , # Input in: mol/m2/s
+                                       fapar, # Input in: -
+                                       kphio, # Input in: -
+                                       beta = 146, # Input in: -
+                                       vcmax_start = 15,  # Input in: -
+                                       jmax_start  = 40,  # Input in: -
+                                       gs_start    = 0.4, # Input in: -
+                                       method_jmaxlim_inst = "smith37", 
+                                       method_eb = "off",
+                                       which_optimizer = "optimr" # optimr or gensa
+                                       ) { 
     
-    out_optim <- optimr::optimr(
-        par        = c( vcmax_start,       gs_start,       jmax_start ), # starting values
-        lower      = c( vcmax_start*0.001, gs_start*0.001, jmax_start*0.001 ),
-        upper      = c( vcmax_start*1000,  gs_start*1000,  jmax_start*1000 ),
-        fn         = optimise_this_tcleaf_vcmax_jmax,
-        args       = c(tc_air, patm, co2, vpd),
-        iabs       = (ppfd * fapar),
-        kphio      = kphio,
-        beta       = beta,
-        c_cost     = c_cost/4,
-        method_jmaxlim_inst = method_jmaxlim_inst,
-        method_eb  = method_eb,
-        method     = "L-BFGS-B",
-        maximize   = TRUE,
-        control    = list(maxit=100)
-    )
+    ## .................................................................................................
+    ## Pick Optimizer and set settings based on energy balance model input
+    if (which_optimizer == "optimr") {
+        if (method_eb == "tealeaves") {
+            ctrl <- list(maxit = 10)
+        } else {
+            ctrl <- list(maxit = 10000)
+        }
+        
+        out_optim <- optimr::optimr(
+            fn         = optimise_this_gs_vcmax_jmax,
+            par        = c( vcmax_start,       jmax_start      , gs_start ), # starting values
+            lower      = c( vcmax_start/1000,  jmax_start/1000,  gs_start/1000 ),
+            upper      = c( vcmax_start*1000,  jmax_start*1000 , gs_start*1000 ),
+            args       = c(tc_air, patm, co2, vpd),
+            iabs       = (ppfd * fapar * 3600 * 24),
+            kphio      = kphio,
+            method_jmaxlim_inst = method_jmaxlim_inst,
+            method_eb  = method_eb,
+            method     = "L-BFGS-B",
+            maximize   = TRUE,
+            control    = ctrl
+        )
+    }
     
+    if (which_optimizer == "gensa") {
+        out_optim <- GenSA(
+            fn         = optimise_this_gs_vcmax_jmax,
+            par        = c( vcmax_start,       jmax_start      , gs_start ), # starting values
+            lower      = c( vcmax_start/1000,  jmax_start/50,  gs_start/1000 ),
+            upper      = c( vcmax_start*1000,  jmax_start*50 , gs_start*1000 ),
+            args       = c(tc_air, patm, co2, vpd),
+            iabs       = (ppfd * fapar * 3600 * 24),
+            kphio      = kphio,
+            method_jmaxlim_inst = method_jmaxlim_inst,
+            method_eb  = method_eb,
+            maximize   = TRUE,
+        )
+    }
+    
+    ## .................................................................................................
+    ## Return optimized variables:
     varlist <- optimise_this_gs_vcmax_jmax(
         par = out_optim$par,
         args = c(tc_air, patm, co2, vpd),
-        iabs = (fapar * ppfd),
-        kphio,
-        beta,
-        c_cost / 4,
-        method_jmaxlim_inst,
-        method_eb,
+        iabs = (ppfd * fapar * 3600 * 24),
+        kphio = kphio,
+        method_jmaxlim_inst = method_jmaxlim_inst,
+        method_eb = method_eb,
         maximize = FALSE,
         return_all = TRUE
     )
@@ -636,28 +659,37 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air = 25,
                 varlist   = varlist)
     
     return(out)
+    
+    ## Test Case:
+    calc_optimal_gs_vcmax_jmax(tc_air = 10,
+                               patm = 101325,
+                               co2 = 400,
+                               vpd = 1000,
+                               ppfd = 800e-6,
+                               fapar = 1,
+                               kphio = 0.05,
+                               method_jmaxlim_inst = "smith37",
+                               method_eb = "tealeaves",
+                               which_optimizer = "optimr")
 }
 
 # .............................................................................
-
-optimise_this_gs_vcmax_jmax <-function(par,
-                                           args,
-                                           iabs,
-                                           kphio,
-                                           beta = 146,
-                                           c_cost = NA,
-                                           method_jmaxlim_inst,
-                                           method_eb,
-                                           maximize = FALSE,
-                                           return_all = FALSE) {
+optimise_this_gs_vcmax_jmax <- function(par,
+                                        args,
+                                        iabs,
+                                        kphio,
+                                        beta = 146,
+                                        c_cost = NA,
+                                        method_jmaxlim_inst,
+                                        method_eb = "off",
+                                        maximize = FALSE,
+                                        return_all = FALSE) {
     
-    
-    ## Parameters to be optimized
-    vcmax <- par[1]
-    gs    <- par[2]
-    jmax  <- par[3]
-    
-    ## Arguments to calculate variables
+    ## .................................................................................................
+    ## Set inputs to local variables
+    vcmax   <- par[1]
+    jmax    <- par[2]
+    gs      <- par[3]
     tc_air  <- args[1]
     patm    <- args[2]
     co2     <- args[3]
@@ -665,59 +697,22 @@ optimise_this_gs_vcmax_jmax <-function(par,
     
     ## .................................................................................................
     ## Call energy balance function
-    
-    ## Energy Balance Development -> get tc_leaf from tc_air
-    ## If no energy balance:
-    tc_leaf  <- tc_air
-    
-    ## With energy balance:
-    ppfd <- iabs # Only true if fapar = 1
-    
-    if (method_eb == "plantecophys") {
-        ## 2.1: Via plantecophys energy balance
-        tc_leaf <- try(calc_tc_leaf_from_tc_air(tc_air = tc_air,
-                                                gs     = gs*1.6,
-                                                vpd    = vpd,
-                                                patm   = patm,
-                                                ppfd   = ppfd))
+    if (method_eb == "off") {
+        tc_leaf  <- tc_air
+    } else {
+        ppfd <- iabs # only true if fapar = 1!
         
-        if (inherits(tc_leaf, "try-error")) {
-            tc_leaf <- tc_air
-            message("plantecophys failed")
-        }
-    } 
-    if (method_eb == "tealeaves") {
-        ## 2.2: Via tealeaves energy balance
-        
-        # Get relative humidity from vpd
-        RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
-        
-        # Get incident short-wave radiation flux density from ppfd
-        S_sw <- ppfd / (24*3600) / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
-        
-        # Get leaf parameters:
-        leaf_par <- make_leafpar(
-            replace = list(
-                g_sw = set_units(gs * 1.6 / (24*3600) * 10^6, "umol/m^2/s/Pa")))
-        
-        # Get environmental parameters:
-        enviro_par <- make_enviropar(
-            replace = list(
-                T_air = set_units(tc_air + 273.15, "K"),
-                S_sw  = set_units(S_sw, "W/m^2"), 
-                RH    = set_units(RH),
-                P     = set_units(patm, "Pa")))
-        
-        # Get physical constants:
-        constants  <- make_constants()
-        
-        # Get tc_leaf:
-        tc_leaf <- tleaf(leaf_par, enviro_par, constants, quiet = T)$T_leaf %>% 
-            set_units("degree_Celsius") %>% drop_units()
+        tc_leaf <- calc_tleaf_from_tair_with_fixed_gs(tc_air = tc_air, # degC
+                                                      gs_c = gs   / 3600/24,       # mol/m2/s
+                                                      ppfd = ppfd / 3600/24,     # mol/m2/s
+                                                      vpd = vpd,       # Pa
+                                                      patm = patm,     # Pa
+                                                      method_eb = method_eb # model: plantecophys, tealeaves
+        )
     }
-    ## .................................................................................................
     
-    ## Local variables based on arguments
+    ## .................................................................................................
+    ## Get variables from functions
     vpd_leaf  <- VPDairToLeaf(vpd/1000, tc_air, tc_leaf, patm/1000) * 1000
     kmm       <- calc_kmm(tc_leaf, patm)
     gammastar <- calc_gammastar(tc_leaf, patm)
@@ -725,7 +720,8 @@ optimise_this_gs_vcmax_jmax <-function(par,
     ca        <- co2_to_ca(co2, patm)
     kphio     <- kphio * calc_ftemp_kphio( tc_leaf, c4 = F )
     
-
+    ## .................................................................................................
+    ## Calcualte assimilation rates
     ## Aj following Smith (1937):
     if (method_jmaxlim_inst == "smith37") {
         aj_out <- calc_aj(kphio, ppfd = iabs, jmax, gammastar, ci = NA, ca, fapar=1, theta = 0.85, j_method = "smith37", model = "numerical", gs)
@@ -744,38 +740,40 @@ optimise_this_gs_vcmax_jmax <-function(par,
     
     ## Ac following FvCB-Model: 
     ac_out <- calc_ac(ci=NA, ca, gammastar, kmm, vcmax, model = "numerical", gs)
-    ci_c <- ac_out$ci
     a_c  <- ac_out$ac
+    ci_c <- ac_out$ci
     
     ## Take minimum of the two assimilation rates and maximum of the two ci
     assim <- min( a_j, a_c )
     ci    <- max(ci_c, ci_j)
     
-    ## Individual costs
+    ## .................................................................................................
+    ## Calculate individual and total costs
     cost_transp <- 1.6 * ns_star * gs * vpd_leaf
     cost_vcmax  <- beta * vcmax
     cost_jmax   <- c_cost * jmax
     
-    ## Option B: This is equivalent to the P-model with its optimization of ci:ca.
     if (assim<=0) {
-        net_assim <- -(999999999.9)
+        stop("Assimilation is negative!")
     } else {
         net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
     }
     
     if (maximize) net_assim <- -net_assim
     
+    ## .................................................................................................
+    ## Gather all variables
     if (return_all) {
         return(
             tibble(
-                vcmax_mine = vcmax / 3600 / 24, # Turn output into per-seconds scale
-                jmax_mine = jmax   / 3600 / 24, # Turn output into per-seconds scale
-                gs_mine = gs       / 3600 / 24, # Turn output into per-seconds scale
+                vcmax_mine = vcmax /(3600*24), # Turn output into per-seconds scale
+                jmax_mine = jmax /(3600*24), # Turn output into per-seconds scale
+                gs_mine = gs /(3600*24), # Turn output into per-seconds scale
                 ci_mine = ci,
                 chi_mine = ci / ca,
-                a_c_mine = a_c     / 3600 / 24, # Turn output into per-seconds scale
-                a_j_mine = a_j     / 3600 / 24, # Turn output into per-seconds scale
-                assim = assim      / 3600 / 24, # Turn output into per-seconds scale
+                a_c_mine = a_c /(3600*24), # Turn output into per-seconds scale
+                a_j_mine = a_j /(3600*24), # Turn output into per-seconds scale
+                assim = assim /(3600*24), # Turn output into per-seconds scale
                 ci_c_mine = ci_c,
                 ci_j_mine = ci_j,
                 cost_transp = cost_transp,
@@ -793,23 +791,23 @@ optimise_this_gs_vcmax_jmax <-function(par,
 }
 
 # .............................................................................
-LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
-                              Tair = 20,     # Input in degC
-                              gs = 0.30,     # Input in mol/m2/s/Pa
-                              PPFD = 130,    # Input in mol/m2/s
-                              VPD = 1000,    # Input in Pa
-                              Patm = 101325, # Input in Pa
+LeafEnergyBalance <- function(Tleaf,  # Input in degC
+                              Tair,     # Input in degC
+                              gs,     # Input in mol/m2/s/Pa
+                              PPFD,    # Input in mol/m2/s
+                              VPD,    # Input in Pa
+                              Patm, # Input in Pa
                               Wind = 2,      # Input in m/s
                               Wleaf = 0.02,
                               StomatalRatio = 2, # 1 = hypostomatous, 2 = amphistomatous
                               LeafAbs = 0.5, # in shortwave range, much less than PAR
-                              returnwhat = c("sqrd")) { # sqrd, abs, diff, flux, verbose
+                              returnwhat = c("diff")) { # sqrd, abs, diff, flux, verbose
     
     
     ## 0. Prerequisites
     ## 0.1 Scale units to fit input and calculations
     Wleaf <- 0.1                        # Assume same leaf size as tealeaves model
-    PPFD  <- PPFD * 10^6                # mol/m2/d to umol/m2/s
+    PPFD  <- PPFD * 10^6                # mol/m2/s to umol/m2/s
     gs    <- gs * Patm                  # mol/m2/s/Pa to mol/m2/s
     Patm  <- Patm / 1000                # Pa to kPa
     VPD   <- VPD  / 1000                # Pa to kPa
@@ -882,6 +880,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     return(out)
 }
 
+## .................................................................................................
 calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
                                      gs       = 0.30, # input in mol/m2/d/Pa
                                      vpd      = 1000, # input in Pa
@@ -1045,7 +1044,7 @@ calc_tc_leaf_final <- function(tc_air    = 25,
 
 ## .................................................................................................
 calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
-                                               gs_c,     # mol/m2/s
+                                               gs_c,   # mol/m2/s
                                                vpd,    # Pa
                                                patm,   # Pa
                                                ppfd,   # mol/m2/s
@@ -1057,18 +1056,39 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
     ## the leaf temperature that closes the energy balance.
     ## Function takes a fixed input of gs.
     ## .............................................................................................
-    
+    ## Call Check
+    if (F) message("Energy balance is called: ", method_eb)
+    ## .............................................................................................
+    ## Function:
     if (method_eb == "plantecophys") {
-        sol_optimr <- try(uniroot(LeafEnergyBalance,
-                                  interval = c(max(0, tc_air-30), tc_air+30),
-                                  Tair      = tc_air,    
-                                  gs        = gs_c*1.6,        
-                                  VPD       = vpd,       
-                                  Patm      = patm,      
-                                  PPFD      = ppfd,      
-                                  returnwhat = "diff"))
+        sol_optimize <- tryCatch(
+            {
+                sol_optimr <- uniroot(LeafEnergyBalance,
+                                          interval = c(max(1, tc_air-30), tc_air+30),
+                                          Tair      = tc_air,    
+                                          gs        = gs_c*1.6,        
+                                          VPD       = vpd,       
+                                          Patm      = patm,      
+                                          PPFD      = ppfd,      
+                                          returnwhat = "diff")
+            },
+            warning = function(cond){
+                message("plantecophys: Warning! Did not converge.")
+                return(NA)
+            },
+            error = function(cond){
+                message("plantecophys: Error! Did not converge")
+                return(NA)
+            },
+            finally = {
+                #pass
+            })
         
-        tc_leaf_out <- sol_optimr$root
+        if (length(sol_optimize) == 1) {
+            return (tc_leaf_out <- tc_air)
+        } else {
+            tc_leaf_out <- sol_optimize$root
+        }
     }
     
     if (method_eb == "tealeaves") {
@@ -1080,7 +1100,7 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
         
         # Get leaf parameters:
         leaf_par <- make_leafpar(replace = list(
-            g_sw = set_units(gs_c*1.6, "mol/m^2/s/Pa")))
+            g_sw = set_units(gs_c*1.6*10^6, "umol/m^2/s/Pa")))
         
         # Get environmental parameters:
         enviro_par <- make_enviropar(replace = list(
@@ -1098,14 +1118,14 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
     }
     
     if (!(method_eb %in% c("plantecophys", "tealeaves"))) {
-        warning("No energy balance model selected")
+        stop("> No energy balance model selected")
     }
     
     return(tc_leaf_out)
     
     ## Testcase:
-    calc_tleaf_from_tair_with_fixed_gs(tc_air = 35, gs = 4e-6, ppfd = 800e-6, vpd = 1000,
-                                       patm = 101325, method_eb = "tealeaves")
+    calc_tleaf_from_tair_with_fixed_gs(tc_air = 4, gs = 5e-6, ppfd = 800e-6, vpd = 1000,
+                                       patm = 101325, method_eb = "plantecophys")
 }
 
 ## .................................................................................................
@@ -1491,6 +1511,356 @@ get_instant_vcmax_jmax <- function(df_in, ftemp_method) {
     
     return(df_out)
 }
+
+# SENSITIVITY ANALYSIS -----------------------------------------------------------------------------
+## > RPMODEL ####
+rpmodel_env_response <- function(df_ref   = "no_input",
+                                 settings = "no_input",
+                                 targets  = "no_input",
+                                 drivers  = "no_input",
+                                 remove_non_convergence = F,
+                                 scales_to_one          = T,
+                                 p_output               = "per_target",
+                                 df_full  = "no_input"){
+    
+    ## Input Check ####
+    ## rpmodel setup
+    if (settings[1] == "no_input") {settings <- get_settings()}
+    if (targets[1] == "no_input") {targets   <- c("chi", "vcmax", "jmax", "gs", "a_gross")} # , "vcmax25", "jmax25"
+    if (drivers[1] == "no_input") {drivers   <- c("tc", "vpd", "ppfd", "patm", "kphio")} # all: c("tc", "vpd", "co2", "ppfd", "patm", "kphio")
+    
+    ## Environmental setup
+    if (df_ref[1] == "no_input") {
+        df_ref <- get_df_ref(settings = settings)
+    }
+    
+    
+    
+    ## Tibble building ####
+    ## Environmental setup
+    if (!(is_tibble(df_full))) {
+        df_ana <- bind_rows(list =
+                                tibble(
+                                    tc = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                                    tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                    vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                    co2       = rep(df_ref$co2, df_ref$nsteps),
+                                    ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                    patm      = rep(df_ref$patm, df_ref$nsteps),
+                                    kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                    env_var   = "tc"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "tc_home"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = seq(from = 100, to = 3000, length.out = df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "vpd"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = seq(from = 200, to = 1000, length.out = df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "co2"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = seq(from = 100e-6, to = 1000e-6, length.out = df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "ppfd"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = seq(from = calc_patm(4000), to = calc_patm(0), length.out = df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "patm"),
+                            tibble(
+                                tc        = rep(df_ref$tc, df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = seq(from = 0.01, to = 0.1, length.out = df_ref$nsteps),
+                                env_var   = "kphio"))
+        
+        
+        ## Doubling tibble to compare analytical vs. numerical setup
+        df_num       <- df_ana
+        df_ana$model <- "analytical"
+        df_num$model <- "numerical"
+        df_full      <- bind_rows(list(df_ana, df_num))
+        df_full$formulation <- settings$rpmodel_accl$method_jmaxlim
+        
+        
+        ## Running rpmodel ####
+        for (row in 1:nrow(df_full)) {
+            message('\014')
+            message("Testing environmental response... ", round(row / nrow(df_full) * 100), " %")
+            
+            if (df_full$model[row] == "analytical") {settings$rpmodel_accl$method_optim <- "analytical"}
+            if (df_full$model[row] == "numerical") {settings$rpmodel_accl$method_optim  <- "numerical"}
+            
+            df_loop <- rpmodel(
+                
+                ## Inputs
+                tc_growth_air = df_full$tc[row],
+                tc_home       = df_full$tc_home[row],
+                vpd           = df_full$vpd[row],
+                co2           = df_full$co2[row],
+                ppfd          = df_full$ppfd[row],
+                patm          = df_full$patm[row],
+                kphio         = df_full$kphio[row],
+                
+                ## Local parameters
+                apar_soilm    = settings$rpmodel_accl$apar_soilm_calib,
+                bpar_soilm    = settings$rpmodel_accl$bpar_soilm_calib,
+                
+                ## Calculation methods
+                method_optim   = settings$rpmodel_accl$method_optim, 
+                method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
+                method_ftemp   = settings$rpmodel_accl$method_ftemp,
+                method_eb      = settings$rpmodel_accl$method_eb
+            )
+            
+            ## Definition of rpmodel output
+            df_full$chi[row]     <- df_loop$chi
+            df_full$ci[row]      <- df_loop$ci
+            df_full$xi[row]      <- df_loop$xi
+            df_full$gs[row]      <- df_loop$gs*10^6
+            df_full$vcmax[row]   <- df_loop$vcmax*10^6
+            df_full$vcmax25[row] <- df_loop$vcmax25*10^6
+            df_full$jmax[row]    <- df_loop$jmax*10^6
+            df_full$jmax25[row]  <- df_loop$jmax25*10^6
+            # df_full$kphio[row]   <- df_loop$kphio
+            df_full$a_gross[row] <- df_loop$a_gross*10^6
+            df_full$tc_growth_leaf[row]   <- df_loop$tc_growth_leaf
+            df_full$opt_convergence[row]   <- df_loop$opt_convergence
+        }
+    }
+    
+    ## Wrangling tibble for plotting
+    df_temp <- df_full %>%
+        mutate(env_var = as.factor(env_var),
+               model = as.factor(model),
+               formulation = as.factor(formulation),
+               model = ifelse(model == "analytical", paste("Analytical"), paste("Numerical")),
+               formulation = ifelse(formulation == "farquhar89", paste("Farquhar"), paste("Smith")),
+               ppfd = ppfd * 10^6,
+               patm = patm / 10^3,
+               vpd  = vpd  / 10^3)
+    
+    ## Rescaling df_ref for display
+    df_ref$ppfd <- df_ref$ppfd*10^6
+    df_ref$patm <- df_ref$patm/10^3
+    df_ref$vpd  <- df_ref$vpd/10^3
+    
+    if (remove_non_convergence) {
+        df_temp <- df_temp %>% dplyr::filter(opt_convergence == 0 | is.na(opt_convergence))
+    }
+    
+    ## For labeling facet wrap:
+    vnames <-list("tc" = "T [°C]",
+                  "vpd" = "D [kPa]",
+                  "co2"  = bquote("CO"[2] ~ " [ppm]"), 
+                  "ppfd" = bquote(I[abs] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]"), 
+                  "patm" = bquote(P[atm] ~ "[kPa]"),
+                  "kphio"= bquote(Phi ~ "[-]"))
+    
+    vlabeller <- function(variable,value){
+        return(vnames[value])
+    }
+    
+    
+    ## Farquhar corrections for kphio:
+    if (settings$rpmodel_accl$method_jmaxlim == "farquhar89") {
+        df_ref$kphio <- df_ref$kphio * 4
+        df_temp$kphio <- df_temp$kphio * 4
+        vnames$kphio <- bquote(Phi[j] ~ "[-]")
+    }
+    
+    ## Generating plots ####
+    ## Create empty list
+    p_all <- list()
+    
+    
+    ## Loop and append plots
+    if (p_output == "per_driver") {
+        ## Per driver ...........................................................................
+        for (v in drivers) {
+            
+            
+            ## Get reference value of driver
+            vline <- df_ref[[v]]
+            
+            
+            ## Rescale all target values to maximum across all env. conditions
+            if (scales_to_one) {
+                df_max <- tibble(max_val = NA, targets = NA)
+                
+                for (t in targets) {
+                    ## Take max value of currently looped env. variable
+                    max_val <- df_temp %>% dplyr::filter(env_var == v) %>% dplyr::select(!!t) %>% max()
+                    
+                    ## Take max value across all env. variables
+                    # max_val <- max(df_temp[t])
+                    
+                    ## Divide by max value
+                    df_temp[, t] <- df_temp[t] / max_val
+                    
+                    ## Add x coodrinate for plotting
+                    x  <- (min(df_temp[v]) + max(df_temp[v]))  / 2
+                    x <- min(df_temp[v])
+                    
+                    ## Add all to df
+                    df_max <- bind_rows(list(df_max, tibble(max_val = max_val, targets = t, x = x)))
+                }
+                df_max <- df_max %>%
+                    drop_na() %>%
+                    mutate(targets = as.factor(targets),
+                           max_val = ifelse(max_val < 0.001, round(max_val*10^6, 2), round(max_val, 2)),
+                           label   = paste0("Max.: ", max_val),
+                           model = "numerical")
+            }
+            
+            
+            ## Plotting
+            p_append <- df_temp %>%
+                dplyr::filter(env_var == v) %>%
+                pivot_longer(cols = all_of(v), names_to = "driver", values_to = "driver_value") %>%
+                pivot_longer(cols = c(targets), names_to = "targets", values_to = "targets_value") %>% 
+                ggplot() +
+                aes(x = driver_value, y = targets_value, color = model, shape = formulation) +
+                geom_vline(xintercept = vline, alpha = 0.5, color = "grey50", linetype = "solid", size = 0.5) +
+                geom_point(size = 2, alpha = 0.8) +
+                ylab(paste(" ")) +
+                xlab(paste(v)) +
+                facet_wrap(~targets, ncol = 3) +
+                labs(title = paste0("Sensitivity to ", v, ", using Jmax formulation by ", ifelse(settings$rpmodel_accl$method_jmaxlim == "Smith", "Smith", "Farquhar")),
+                     caption = paste0("\n Reference conditions (vertical grey lines): \n",
+                                      "tc = ", df_ref$tc, " [°C]",
+                                      ", tc_home = ", df_ref$tc_home, " [°C]",
+                                      ", vpd = ", df_ref$vpd, " [Pa]",
+                                      ", co2 = ", df_ref$co2, " [ppm]",
+                                      ", ppfd = ", df_ref$ppfd, " [mol/m2/s]",
+                                      ", patm = ", df_ref$patm, " [Pa]",
+                                      ", phi = ", df_ref$kphio, " [-]")) +
+                theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+                      legend.position = c(0.825, 0.25))
+            
+            ## Fix yscale from 0 to 1 for comparisons:
+            if (scales_to_one) {
+                p_append <- p_append +
+                    ylim(0, 1) +
+                    ylab("Relative to maximum value") +
+                    geom_text(data = df_max, aes(x = x, y = 0.1, label = label), colour = "black",
+                              hjust = 0,
+                              size = 4,
+                              inherit.aes = FALSE, parse = FALSE)
+                
+                ## Append plot to list
+                p_all[[length(p_all)+1]] <- p_append
+            }
+        }
+    } else if (p_output == "per_target") {
+        ## Per per_target ...........................................................................
+        for (t in targets) {
+            
+            ## Create base ggplot:
+            p_append <- df_temp %>%
+                pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+                pivot_longer(cols = all_of(t), names_to = "targets", values_to = "targets_value") %>% 
+                dplyr::filter(targets == t,
+                              driver  == env_var) %>% 
+                ggplot()
+            
+            ## Add vertical lines if only one formulation displayed:
+            if (length(unique(df_full$formulation)) == 1) {
+                p_append <- p_append +
+                    geom_vline(data = df_ref %>% pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "x"),
+                               aes(xintercept = x), alpha = 0.75, color = "grey50", linetype = "dotted", size = 0.75) +
+                    labs(caption = paste0("\n Reference conditions (vertical grey lines): \n",
+                                          "tc = ", df_ref$tc, " [°C]",
+                                          ", tc_home = ", df_ref$tc_home, " [°C]",
+                                          ", vpd = ", df_ref$vpd, " [Pa]",
+                                          ", co2 = ", df_ref$co2, " [ppm]",
+                                          ", ppfd = ", df_ref$ppfd, " [mol/m2/s]",
+                                          ", patm = ", df_ref$patm, " [Pa]",
+                                          ", phi = ", round(df_ref$kphio, 2), " [-]"))
+            } else {
+                p_append <- p_append + labs(caption = paste0("\n Reference conditions (vertical grey lines):\n",
+                                                             "tc = ", df_ref$tc, " [°C]",
+                                                             ", tc_home = ", df_ref$tc_home, " [°C]",
+                                                             ", vpd = ", df_ref$vpd, " [Pa]",
+                                                             ", co2 = ", df_ref$co2, " [ppm]",
+                                                             ", ppfd = ", df_ref$ppfd, " [µmol /m2 / s]",
+                                                             ", patm = ", df_ref$patm, " [Pa]"))
+            }
+            
+            ## Add aesthetics
+            p_append <- p_append +
+                aes(x = driver_value, y = targets_value, color = formulation, shape = model, linetype = model) +
+                # geom_point(size = 1, alpha = 0.6) +
+                # scale_shape_manual(values = c("Farquhar" = "orange", "smitz37" = "brown")) +
+                geom_line(size = 1, alpha = 0.75) +
+                scale_color_manual(name = bquote(J[max] ~ "- Lim.:"),
+                                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
+                scale_linetype_manual(name = "Model: ",
+                                      values = c("Analytical" = 6, "Numerical" = 1)) +
+                facet_wrap(~driver, ncol = length(drivers), scales = "free", labeller = vlabeller) +
+                
+                ## Add text
+                xlab(paste("Input Variable")) +
+                ylab(paste(t)) +
+                labs(title = paste0("Sensitivity of ", t, ", using Jmax formulation by ", ifelse(settings$rpmodel_accl$method_jmaxlim == "smith37", "Smith", "Farquhar")))+
+                theme(axis.text.x = element_text(angle = 45, hjust=  1))
+            # theme_bw() +
+            # theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+            #       strip.text.x = element_text(size = 10))
+            
+            ## Fixing scales for comparison
+            # if ( t == "chi")     {p_append <- p_append + ylim(0.25, 1)}
+            # if ( t == "vcmax")   {p_append <- p_append + ylim(0, 6e-4)}
+            # if ( t == "jmax")    {p_append <- p_append + ylim(0, 6e-4)}
+            # if ( t == "gs")      {p_append <- p_append + ylim(0, 8e-6)}
+            # if ( t == "a_gross") {p_append <- p_append + ylim(0, 7e-5)}
+            
+            ## Append plot to list
+            p_all[[length(p_all)+1]] <- p_append
+        }
+    }
+    
+    ## Define output ####
+    out <- list(plot = p_all,
+                data = df_full)   
+    
+    return(out)
+}
+
+## .................................................................................................
+## > COST FUNCTION #####
+
+
 
 # TEST ZONE -------------------------------------------------------------------
 

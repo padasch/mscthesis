@@ -1019,19 +1019,20 @@ df_ref <- get_df_ref()
 
 library(GenSA)
 out_optim <- GenSA(
-  fn         = optimise_this_tcleaf_vcmax_jmax,
+  fn         = optimise_this_gs_vcmax_jmax,
   par        = c( df_ref$vcmax_start,       df_ref$gs_start,       df_ref$jmax_start ), # starting values
   lower      = c( df_ref$vcmax_start*0.001, df_ref$gs_start*0.001, df_ref$jmax_start*0.001 ),
-  upper      = c( df_ref$vcmax_start*1000,  df_ref$gs_start*1000,  df_ref$jmax_start*2 ),
+  upper      = c( df_ref$vcmax_start*1000,  df_ref$gs_start*1000,  df_ref$jmax_start*1000 ),
   args       = c(df_ref$tc, df_ref$patm, df_ref$co2, df_ref$vpd),
-  iabs       = (df_ref$ppfd * df_ref$fapar*3600*24),
+  iabs       = (df_ref$ppfd * df_ref$fapar),
   kphio      = df_ref$kphio,
   beta       = 146,
   method_jmaxlim_inst = "smith37",
-  method_eb  = "off"
+  method_eb  = "plantecophys",
+  maximize   = T
 )
 
-out_optim
+out_optim$par
 
 
 

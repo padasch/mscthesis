@@ -173,7 +173,7 @@ p_ana_f89    <-
         df_x_dataset = "analytical_f89",
         df_y = make_df_evaluation_p21_long(df_in = df_ana_f89),
         df_y_dataset = "peng21",
-        kphio_vcmax_corr = T
+        kphio_vcmax_corr = F
     )
 
 
@@ -269,11 +269,13 @@ cat(" Computation time: \n",
 
 
 ## Plots
-# p1 <- p_noeb +  xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
-# p2 <- p_eb_pl + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+p1 <- p_noeb +  xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+p2 <- p_eb_pl + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 # p3 <- p_eb_te + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 # 
 # p1 + p2 + p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+plot(p_eb_pl$data$tc_growth_air, p_eb_pl$data$tc_growth_leaf)
+abline(0, 1)
 p1 / p2
 ```
 

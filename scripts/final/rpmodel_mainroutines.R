@@ -35,10 +35,11 @@ rpmodel <- function(
     verbose = FALSE 
 ){
   
+  ## .................................................................................................
+  ## CHECKS ####
   ## Adding check for numerical convergence to output
   opt_convergence <- NA
   
-  ## Check input ####
   ## Elevation or pressure given?
   if (identical(NA, elv) && identical(NA, patm)){
       stop("Aborted. Provide either elevation (arugment elv) or atmospheric pressure (argument patm).")
@@ -61,6 +62,9 @@ rpmodel <- function(
       }
   }
   
+  ## Stop if analytical and energy balance is called
+  if (method_optim == "analytical" && method_eb != "off") message("> Analytical + EB is called...")
+  ## .................................................................................................
   
   ## Get constants ####
   c_molmass <- 12.0107  # molecular mass of carbon (g)
@@ -190,11 +194,11 @@ rpmodel <- function(
     if (method_jmaxlim == "wang17") {method_jmaxlim <- "smith37"}
     if (method_jmaxlim == "smith19") {method_jmaxlim <- "farquhar89"}
     
-    final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_air = tc_growth_air,
+    final_opt <- calc_optimal_gs_vcmax_jmax(tc_air = tc_growth_air,
                                                 patm = patm,
                                                 co2 = co2,
                                                 vpd = vpd,
-                                                ppfd = ppfd * 3600 * 24,
+                                                ppfd = ppfd,
                                                 fapar = fapar,
                                                 kphio = kphio,
                                                 method_jmaxlim_inst = method_jmaxlim,
@@ -208,7 +212,7 @@ rpmodel <- function(
     
     chi     <- varlist_optim$chi_mine
     ci      <- varlist_optim$ci_mine
-    xi      <- sqrt((beta*kmm*gammastar)/(1.6*ns_star))
+    xi      <- NA
     gs      <- varlist_optim$gs_mine
     vcmax   <- varlist_optim$vcmax_mine
     jmax    <- varlist_optim$jmax_mine
@@ -547,7 +551,6 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
     jmax25  <- jmax  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth, tchome = tc_home, method_ftemp = settings$rpmodel_inst$method_ftemp)
     a_gross <- varlist_optim$assim
     
-    
     # Electron Transport Rate: Aj
     aj_out <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca = co2, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "numerical", gs = gs)
     aj     <- aj_out$aj
@@ -639,6 +642,38 @@ get_settings <- function(){
 }
 
 # .............................................................................
+get_df_ref <- function(settings = NA){
+  
+  if(is.na(settings)) {
+    settings <- get_settings()
+    message("Standard settings from get_settings()")
+  }
+  
+  df_ref <- tibble(
+    ## Environment:
+    tc        = 25,
+    tc_home   = 20,
+    vpd       = 1000,
+    co2       = 400,
+    ppfd      = 800e-6,
+    patm      = 101325,
+    fapar     = 1,
+    kphio     = settings$rpmodel_accl$kphio_calib,
+    
+    ## Photosynthetic variables
+    kmm       = calc_kmm(25, 101325),
+    gammastar = calc_gammastar(25, 101325),
+    ns_star   = 1,
+    
+    ## Parameters
+    nsteps    = 10,
+    vcmax_start = 2,
+    jmax_start = 8,
+    gs_start = 0.6)
+  return(df_ref)
+}
+
+## .................................................................................................
 run_accl_to_sim <- function(settings,
                             df_drivers,
                             df_evaluation,
