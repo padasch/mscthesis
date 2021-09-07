@@ -587,7 +587,7 @@ VPDtoRH <- function(VPD, TdegC, Pa=101){
 # ENERGY BALANCE ####
 # .........................................................
 
-calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
+calc_optimal_gs_vcmax_jmax <- function(tc_air = 25,
                                        patm = 101325,
                                        co2 = 400,
                                        vpd = 1000,
@@ -619,7 +619,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
         control    = list(maxit=100)
     )
     
-    varlist <- optimise_this_tcleaf_vcmax_jmax(
+    varlist <- optimise_this_gs_vcmax_jmax(
         par = out_optim$par,
         args = c(tc_air, patm, co2, vpd),
         iabs = (fapar * ppfd),
@@ -640,7 +640,7 @@ calc_optimal_tcleaf_vcmax_jmax <- function(tc_air = 25,
 
 # .............................................................................
 
-optimise_this_tcleaf_vcmax_jmax <-function(par,
+optimise_this_gs_vcmax_jmax <-function(par,
                                            args,
                                            iabs,
                                            kphio,
@@ -795,8 +795,8 @@ optimise_this_tcleaf_vcmax_jmax <-function(par,
 # .............................................................................
 LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
                               Tair = 20,     # Input in degC
-                              gs = 0.30,     # Input in mol/m2/d/Pa
-                              PPFD = 130,    # Input in mol/m2/d
+                              gs = 0.30,     # Input in mol/m2/s/Pa
+                              PPFD = 130,    # Input in mol/m2/s
                               VPD = 1000,    # Input in Pa
                               Patm = 101325, # Input in Pa
                               Wind = 2,      # Input in m/s
@@ -809,7 +809,7 @@ LeafEnergyBalance <- function(Tleaf = 21.5,  # Input in degC
     ## 0. Prerequisites
     ## 0.1 Scale units to fit input and calculations
     Wleaf <- 0.1                        # Assume same leaf size as tealeaves model
-    PPFD  <- PPFD * 10^6 / (3600*24)    # mol/m2/d to umol/m2/s
+    PPFD  <- PPFD * 10^6                # mol/m2/d to umol/m2/s
     gs    <- gs * Patm                  # mol/m2/s/Pa to mol/m2/s
     Patm  <- Patm / 1000                # Pa to kPa
     VPD   <- VPD  / 1000                # Pa to kPa
@@ -1045,7 +1045,7 @@ calc_tc_leaf_final <- function(tc_air    = 25,
 
 ## .................................................................................................
 calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
-                                               gs,     # mol/m2/s
+                                               gs_c,     # mol/m2/s
                                                vpd,    # Pa
                                                patm,   # Pa
                                                ppfd,   # mol/m2/s
@@ -1060,13 +1060,13 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
     
     if (method_eb == "plantecophys") {
         sol_optimr <- try(uniroot(LeafEnergyBalance,
-                                  interval = c(tc_air-30), tc_air+30),
-                                  Tair      = tc_air,
-                                  gs        = gs,
-                                  VPD       = vpd,
-                                  Patm      = patm,
-                                  PPFD      = ppfd,
-                                  returnwhat = "diff")
+                                  interval = c(max(0, tc_air-30), tc_air+30),
+                                  Tair      = tc_air,    
+                                  gs        = gs_c*1.6,        
+                                  VPD       = vpd,       
+                                  Patm      = patm,      
+                                  PPFD      = ppfd,      
+                                  returnwhat = "diff"))
         
         tc_leaf_out <- sol_optimr$root
     }
@@ -1076,26 +1076,24 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
         RH <- VPDtoRH(vpd/1000, tc_air, patm/1000) / 100
         
         # Get incident short-wave radiation flux density from ppfd
-        S_sw <- ppfd / (24*3600) * 10^6 / 2.04 # mol/m2/d to umol/m2/s to J/s/m2 = W/m2, 4.6 from Bonan 2016 but Stocker 2020 used 2.04
+        S_sw <- ppfd * 10^6 / 2.04 # umol/m2/s * umol/J = W/m2, 2.04 from Meek et al. (1984)
         
         # Get leaf parameters:
-        leaf_par <- make_leafpar(
-            replace = list(
-                g_sw = set_units(gs_water*10^6, "umol/m^2/s/Pa")))
+        leaf_par <- make_leafpar(replace = list(
+            g_sw = set_units(gs_c*1.6, "mol/m^2/s/Pa")))
         
         # Get environmental parameters:
-        enviro_par <- make_enviropar(
-            replace = list(
-                T_air = set_units(tc_air + 273.15, "K"),
-                S_sw  = set_units(S_sw, "W/m^2"), 
-                RH    = set_units(RH),
-                P     = set_units(patm, "Pa")))
+        enviro_par <- make_enviropar(replace = list(
+            T_air = set_units(tc_air + 273.15, "K"),
+            S_sw  = set_units(S_sw, "W/m^2"), 
+            RH    = set_units(RH),
+            P     = set_units(patm, "Pa")))
         
         # Get physical constants:
         constants  <- make_constants()
         
         # Get tc_leaf:
-        tc_leaf_leb <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
+        tc_leaf_out <- tleaf(leaf_par, enviro_par, constants, quiet = TRUE)$T_leaf %>% 
             set_units("degree_Celsius") %>% drop_units()
     }
     
@@ -1103,7 +1101,11 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
         warning("No energy balance model selected")
     }
     
-    return(out)
+    return(tc_leaf_out)
+    
+    ## Testcase:
+    calc_tleaf_from_tair_with_fixed_gs(tc_air = 35, gs = 4e-6, ppfd = 800e-6, vpd = 1000,
+                                       patm = 101325, method_eb = "tealeaves")
 }
 
 ## .................................................................................................
