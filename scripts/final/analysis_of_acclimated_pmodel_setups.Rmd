@@ -205,8 +205,8 @@ p_ana_f89 / p_num_f89 + plot_layout(guides = "collect") & theme(legend.position 
 ```
 
 
-## Leaf energy balance + computing time
-```{r}
+## ENERGY BALANCE
+```{r fig.height=6}
 ## Analytical
 settings <- get_settings()
 t_start <- Sys.time()
@@ -269,11 +269,12 @@ cat(" Computation time: \n",
 
 
 ## Plots
-# p1 <- p_noeb +  xlim(0, 250) + ylim(0, 250)
-# p2 <- p_eb_pl + xlim(0, 250) + ylim(0, 250)
-# p3 <- p_eb_te + xlim(0, 250) + ylim(0, 250)
+# p1 <- p_noeb +  xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+# p2 <- p_eb_pl + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+# p3 <- p_eb_te + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 # 
 # p1 + p2 + p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+p1 / p2
 ```
 
 
@@ -303,7 +304,7 @@ p_k07 + xlim(0, 6e-4) + ylim(0, 6e-4)
 ```{r}
 ## Reference: All tau = 30:
 settings <- get_settings()
-# settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_optim <- "numerical"
 df_all_30 <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_p21, df_evaluation = df_evaluation_p21)  %>%
     get_instant_vcmax_jmax(ftemp_method = settings$rpmodel_accl$method_ftemp)
 p_all_30  <- plot_two_long_df(df_x = make_long_df(df_in = df_all_30, dataset = "all_tau_30"), df_x_dataset = "all_tau_30", df_y = make_df_evaluation_p21_long(df_in = df_all_30), df_y_dataset = "peng21", kphio_vcmax_corr = F)
@@ -329,10 +330,10 @@ p_tempppfd30  <- plot_two_long_df(df_x = make_long_df(df_in = df_tempppfd30, dat
 
 
 ## Plots
-p_all_30     + xlim(0, 250) + ylim(0, 250)
-p_temp10     + xlim(0, 250) + ylim(0, 250)
-p_ppfd10     + xlim(0, 250) + ylim(0, 250)
-p_tempppfd30 + xlim(0, 250) + ylim(0, 250)
+p_all_30     + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+p_temp10     + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+p_ppfd10     + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
+p_tempppfd30 + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 
 ## Notes
 # tc_air tau = 5  -> r'2 0.59
