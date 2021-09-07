@@ -879,14 +879,7 @@ df_timespan_without_dfs <- df_timespan %>% dplyr::select(-c("data_a_s37" ,  "dat
 ## Global Maps for Peng 2021 #### 
 library(ggmap)
 library(ggrepel)
-
-
-## P21 Global Map
-# Get df_evaluation_p21 from analysis of acclimate pmodel
-
-siteinfo <- df_evaluation_p21 %>% mutate(lon = purrr::map_dbl(data_raw, . %>% pull(lon) %>% unique()),
-                                         lat = purrr::map_dbl(data_raw, . %>% pull(lat) %>% unique()))
-
+# Global Maps Basis
 kg <- readOGR(dsn = "~/data/climate_zones/1976-2000_GIS", layer = "1976-2000")
 kg <- spTransform(kg, CRS("+proj=longlat +datum=WGS84"))
 kg_f <- fortify(kg, region = "GRIDCODE")
@@ -894,11 +887,8 @@ key <- data.frame( id = c(11, 12, 13, 14, 21, 22, 26, 27, 31, 32, 33, 34, 35, 36
                    cl = c( "Af", "Am", "As", "Aw", "BWk", "BWh", "BSk", "BSh", "Cfa", "Cfb", "Cfc", "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Dfa", "Dfb", "Dfc", "Dfd", "Dsa", "Dsb", "Dsc", "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "EF", "ET"))
 kg_final <- merge(kg_f, key)
 
-(p <- siteinfo %>%
-  ggplot() +
-  # borders("world", colour="black", fill="gray50") +
+p_base <- ggplot() +
   geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl), alpha = 0.8) +
-  geom_point(aes(x = lon, y = lat), color = "black", size = 3, pch = 4) +
   ylab("Latitude (Decimal Degree)") +
   xlab("Longitude (Decimal Degree)") +
   coord_cartesian(ylim=c(-80, 80)) +
@@ -909,8 +899,17 @@ kg_final <- merge(kg_f, key)
                                "#64FFFF", "#F5FFFF")) +
   theme(legend.position = "bottom") +
   guides(fill = guide_legend(ncol = 12, direction = "horizontal", title.position = "top")) +
-  labs(fill = "Köppen-Geiger Climate Zone") +
-  ggtitle(bquote(("Global distribution of " ~ V[cmax] ~ "observations"))))
+  labs(fill = "Köppen-Geiger Climate Zone")
+
+## P21 Global Map
+# Get df_evaluation_p21 from analysis of acclimate pmodel
+
+siteinfo <- df_evaluation_p21 %>% mutate(lon = purrr::map_dbl(data_raw, . %>% pull(lon) %>% unique()),
+                                         lat = purrr::map_dbl(data_raw, . %>% pull(lat) %>% unique()))
+
+p <- p_base +
+  geom_point(data = siteinfo, aes(x = lon, y = lat), color = "black", size = 3, pch = 21, fill = "white") +    
+  ggtitle(bquote("Global distribution of " ~ V[cmax] ~ "observations"))
 
 ggsave("~/projects/mscthesis/docs/fig-global-map-p21.pdf", p, height = 7, width = 8)
 
@@ -938,63 +937,19 @@ df_evaluation_p21_new <- df_evaluation_p21 %>%
 siteinfo <- readRDS("~/Polybox/2_ETH/ONGOING/msc-thesis/rproject/data/mscthesis/siteinfo_for_cluster.rds") %>%
   left_join(read_csv("~/data/mscthesis/final/metainfo_k19.csv"))
 
-kg <- readOGR(dsn = "~/data/climate_zones/1976-2000_GIS", layer = "1976-2000")
-kg <- spTransform(kg, CRS("+proj=longlat +datum=WGS84"))
-kg_f <- fortify(kg, region = "GRIDCODE")
-key <- data.frame( id = c(11, 12, 13, 14, 21, 22, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 61, 62),
-                   cl = c( "Af", "Am", "As", "Aw", "BWk", "BWh", "BSk", "BSh", "Cfa", "Cfb", "Cfc", "Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Dfa", "Dfb", "Dfc", "Dfd", "Dsa", "Dsb", "Dsc", "Dsd", "Dwa", "Dwb", "Dwc", "Dwd", "EF", "ET"))
-kg_final <- merge(kg_f, key)
-
-
-(p <- siteinfo %>%
-    ggplot() +
-    # borders("world", colour="black", fill="gray50") +
-    geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl), alpha = 0.8) +
-    geom_point(aes(x = lon, y = lat), color = "black", size = 3, pch = 4) +
-    ylab("Latitude (Decimal Degree)") +
-    xlab("Longitude (Decimal Degree)") +
-    coord_cartesian(ylim=c(-80, 80)) +
-    scale_fill_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                 "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                 "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                 "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                 "#64FFFF", "#F5FFFF")) +
-    theme(legend.position = "bottom") +
-    guides(fill = guide_legend(ncol = 12, direction = "horizontal", title.position = "top")) +
-    labs(fill = "Köppen-Geiger Climate Zone") +
-    ggtitle(bquote(("Global distribution of " ~ V[cmax] ~ "observations"))))
+p <- p_base +
+  geom_point(data = siteinfo, aes(x = lon, y = lat), color = "black", size = 3, pch = 21, fill = "white") +    
+  ggtitle(bquote("Global distribution of " ~ T[opt] ~ "observations")) 
+  # geom_label_repel(data = siteinfo,
+  #                  aes(x = lon, y = lat, label = source),
+  #                  box.padding = 0.5,
+  #                  point.padding = 0.5,
+  #                  min.segment.length = 0, # draw all line segments
+  #                  arrow = arrow(length = unit(0.015, "npc")))
 
 ggsave("~/projects/mscthesis/docs/fig-global-map-k19.pdf", p, height = 7, width = 8)
 
-
-siteinfo %>%
-  ggplot() +
-  # borders("world", colour="black", fill="gray50") +
-  # geom_line(data = kg_2, aes(x = Lon, y = Lat, color = Cls)) +
-  # geom_polygon(kg_f, aes(x = long, y = lat, ))
-  geom_polygon(data = kg_final, aes(x = long, y = lat, group = group, fill = cl, alpha = 0.9)) +
-  geom_point(aes(x = lon, y = lat), color = "black", size = 3, shape = 18) +
-  geom_label_repel(aes(x = lon, y = lat, label = source),
-                   box.padding = 0.5,
-                   point.padding = 0.5,
-                   min.segment.length = 0, # draw all line segments
-                   arrow = arrow(length = unit(0.015, "npc"))) +  # draw arrows
-  ylab("Latitude (Decimal Degree)") +
-  xlab("Longitude (Decimal Degree)") +
-  # coord_cartesian(ylim=c(-85, 80)) +
-  scale_fill_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                               "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                               "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                               "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                               "#64FFFF", "#F5FFFF"),
-                    name = "Koeppen-Geiger Climate Zone",
-                    guide = guide_legend(
-                      direction = "horizontal",
-                      title.position = "top",
-                      ncol = 12))  +
-  theme(legend.position = "bottom")
-
-# ......................................................................... ####
+ # ......................................................................... ####
 # 04/09/2020 ####
 ## Plots for thesis from scratch ####
 ## Prerequisites
@@ -1057,7 +1012,26 @@ df_temp %>%
 ## Removing duplicate entries in P21 data ####
 
 
+# ......................................................................... ####
+# 06/09/2020 ####
+## Testing GenSA for numerical model ####
+df_ref <- get_df_ref()
 
+library(GenSA)
+out_optim <- GenSA(
+  fn         = optimise_this_tcleaf_vcmax_jmax,
+  par        = c( df_ref$vcmax_start,       df_ref$gs_start,       df_ref$jmax_start ), # starting values
+  lower      = c( df_ref$vcmax_start*0.001, df_ref$gs_start*0.001, df_ref$jmax_start*0.001 ),
+  upper      = c( df_ref$vcmax_start*1000,  df_ref$gs_start*1000,  df_ref$jmax_start*2 ),
+  args       = c(df_ref$tc, df_ref$patm, df_ref$co2, df_ref$vpd),
+  iabs       = (df_ref$ppfd * df_ref$fapar*3600*24),
+  kphio      = df_ref$kphio,
+  beta       = 146,
+  method_jmaxlim_inst = "smith37",
+  method_eb  = "off"
+)
+
+out_optim
 
 
 
