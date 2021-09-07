@@ -448,6 +448,7 @@ settings <- get_settings()
 
 ## Environmental setup
 df_ref <- get_df_ref(settings)
+df_ref$nsteps <- 50
 
 ## Total cost versus optimized parameters ..........................................................
 ## Tibble building ####
@@ -477,7 +478,7 @@ df_full <- bind_rows(list(tibble(df_cost, formulation = "smith37"),
            cost_gs    = NA)
 
 ## Optimal vcmax at given conditions:
-opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = df_ref$tc,
+opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_air = df_ref$tc,
                                            patm = df_ref$patm,
                                            co2 = df_ref$co2,
                                            vpd = df_ref$vpd,
@@ -532,18 +533,20 @@ p_cost <- df_temp %>%
     # mutate(cost_total = cost_total/max(cost_total)) %>%
     ggplot() +
     aes(x = values, y = cost_total, color = formulation, linetype = formulation) +
-    scale_color_grey() +
-    geom_line(alpha = 0.8, size = 1.5) +
+    # scale_color_grey() +
+    geom_line(alpha = 1, size = 1.5) +
     facet_wrap(~names, scales = "free_x", ncol = 3, labeller = vlabeller) +
     theme(legend.position = "bottom") + #legend.position = c(0.75, 0.25)
     labs(linetype = bquote(J[max]~"- Lim.:"),
          color = bquote(J[max]~"- Lim.:")) +
-    # xlab(paste("Numerically optimized value")) +
-    xlab("") +
+    xlab(paste("Numerically optimized value")) +
+    # xlab("") +
     # ylab(paste("Relative total costs"))
     # ylab(bquote("Costs: ("~1.6*g[s]*D + beta*V[cmax] + c*J[max]~") / "~A[gross])) +
     ylab("Total carbon cost") +
-    ylim(500, 2500) 
+    ylim(500, 2500) +
+    scale_color_manual(name = bquote(J[max] ~ "- Lim.:"),
+                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
 
 ## Plot effect on variable-related costs: ## UNIMPORTANT
 ## For vcmax:
@@ -611,7 +614,7 @@ df_full <- bind_rows(list(tibble(df_start, formulation = "smith37"),
 
 ## Run loop
 for (i in 1:nrow(df_full)) {
-    opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = df_ref$tc,
+    opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_air = df_ref$tc,
                                                patm = df_ref$patm,
                                                co2 = df_ref$co2,
                                                vpd = df_ref$vpd,
@@ -650,7 +653,6 @@ vlabeller <- function(variable,value){
     return(vnames[value])
     }
 
-
 ## Generating plots ####
 ## Create empty list
 
@@ -670,7 +672,7 @@ for (t in targets) {
                 aes(x = driver_value, y = targets_value, color = formulation, shape = formulation, linetype = formulation) +
                 # geom_point(size = 2, alpha = 0.6) +
                 geom_line(size = 1.5, alpha = 0.8) +
-                scale_color_grey() +
+                # scale_color_grey() +
                 # scale_shape_manual(values = c("farquhar89" = 16, "smith37" = 17)) +
                 # scale_color_manual(values = c("analytical" = "orange", "numerical" = "brown")) +
                 # scale_linetype_manual(values = c("farquhar89" = 1, "smith37" = 2)) +
@@ -688,19 +690,21 @@ for (t in targets) {
                 #                                              ", ppfd = ", df_ref$ppfd, " [mol /m2 / s]",
                 #                                              ", patm = ", df_ref$patm, " [Pa]")) +
                 # labs(title = paste0("Effect of starting conditions")) +
-                theme_bw() +
+                # theme_bw() +
                 theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
                       strip.text.x = element_text(size = 10),
                       legend.position = c(0.75, 0.25)) +
                 labs(linetype = bquote(J[max]~"-Formulation"),
-                     color = bquote(J[max]~"-Formulation"))
+                     color = bquote(J[max]~"-Formulation")) +
+                scale_color_manual(name = bquote(J[max] ~ " - Lim.:"),
+                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
             
             ## Append plot to list
             p_all[[length(p_all)+1]] <- p_append
 }
 
 p1 <- p_all[[1]] + xlab("") + ylim(0, 20) + theme(axis.ticks.x = element_blank(), axis.text.x = element_blank()) + ylab(bquote(V[cmax]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"))
-p2 <- p_all[[2]] + xlab("") + ylim(0, 20) + theme(strip.text.x = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank())  + ylab(bquote(J[max]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"))
+p2 <- p_all[[2]] + xlab("") + ylim(0, 40) + theme(strip.text.x = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank())  + ylab(bquote(J[max]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"))
 p3 <- p_all[[3]] + xlab("Start Value") + ylim(0, 0.5) + theme(strip.text.x = element_blank())  + ylab(bquote(g[s]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
 p_starting_conditions_patch <- p1 / p2 / p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(caption = paste0("Fixed starting values: vcmax = ", df_ref$vcmax_start, 
                           ", jmax = ", df_ref$jmax_start, 
@@ -717,17 +721,21 @@ p_starting_conditions_facet <- df_temp_start %>%
     ggplot() + 
     aes(x = driver_value, y = targets_value, color = formulation, shape = formulation, linetype = formulation) +
     geom_line(size = 1.5, alpha = 0.8) +
-    scale_color_grey() +
+    # scale_color_grey() +
     facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
-    theme_bw() +
     theme(legend.position = "bottom") +
+    scale_color_manual(name = bquote(J[max] ~ " - Lim.:"),
+                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
     
     ## Labels
     ylab("Output Value") +
     xlab("Starting Value") +
-    labs(linetype = bquote(J[max]~" - Lim.:"),
-         color = bquote(J[max]~" - Lim.:"))
+    labs(linetype = bquote(J[max] ~ " - Lim.:"),
+         color = bquote(J[max] ~ " - Lim.:"))
+```
 
+## Cost Plots
+```{r, fig.height = 3.5, fig.width = 8}
 ## Cost Plot  ..........................................................................................................
 p_cost + labs(
     caption = paste0(
@@ -749,6 +757,9 @@ p_starting_conditions_facet + labs(caption = paste0("Fixed starting values: vcma
 ggsave("~/projects/mscthesis/docs/fig-optim-facet.pdf", p_starting_conditions_facet, height = 6, width = 6)
 ```
 
+```{r, fig.height = 6, fig.width = 6}
+p_starting_conditions_patch
+```
 
 
 
@@ -853,7 +864,7 @@ df_ref
 ## Old cost function
 ```{r}
 ## Environmental conditions and respective optimal variables
-(opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = 25,
+(opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_air = 25,
                                            patm = 101325,
                                            co2 = 400,
                                            vpd = 1000,
