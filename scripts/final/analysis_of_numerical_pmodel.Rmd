@@ -445,10 +445,11 @@ settings$rpmodel_accl$method_eb <- "tealeaves"
 ```{r, fig.height = 3.5, fig.width = 8}
 ## Settings
 settings <- get_settings()
+settings$rpmodel_accl$method_eb <- "plantecophys"
 
 ## Environmental setup
 df_ref <- get_df_ref(settings)
-df_ref$nsteps <- 50
+df_ref$nsteps <- 25
 
 ## Total cost versus optimized parameters ..........................................................
 ## Tibble building ####
@@ -488,7 +489,8 @@ opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_air = df_ref$tc,
                                            vcmax_start = df_ref$vcmax_start,
                                            jmax_start = df_ref$jmax_start,
                                            gs_start = df_ref$gs_start,
-                                           method_jmaxlim_inst = "smith37")$varlist$vcmax_mine
+                                           method_jmaxlim_inst = settings$rpmodel_accl$method_jmaxlim,
+                                           method_eb  = settings$rpmodel_accl$method_eb)$varlist$vcmax_mine
 
 ## Run loop:
 for (i in 1:nrow(df_full)) {
@@ -498,6 +500,7 @@ for (i in 1:nrow(df_full)) {
         iabs       = (df_ref$ppfd*3600*24 * df_ref$fapar),
         kphio      = df_full$kphio[i],
         method_jmaxlim_inst = df_full$formulation[i],
+        method_eb  = settings$rpmodel_accl$method_eb, 
         maximize   = T,
         return_all = TRUE)
     
@@ -624,7 +627,8 @@ for (i in 1:nrow(df_full)) {
                                                vcmax_start = df_full$vcmax_start[i],
                                                jmax_start = df_full$jmax_start[i],
                                                gs_start = df_full$gs_start[i],
-                                               method_jmaxlim_inst = df_full$formulation[i])
+                                               method_jmaxlim_inst = df_full$formulation[i],
+                                               method_eb = settings$rpmodel_accl$method_eb)
     
     df_full$vcmax_opt[i] <- opt_vars$varlist$vcmax_mine * 3600 * 24 
     df_full$jmax_opt[i]  <- opt_vars$varlist$jmax_mine * 3600 * 24
@@ -709,9 +713,27 @@ p3 <- p_all[[3]] + xlab("Start Value") + ylim(0, 0.5) + theme(strip.text.x = ele
 p_starting_conditions_patch <- p1 / p2 / p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(caption = paste0("Fixed starting values: vcmax = ", df_ref$vcmax_start, 
                           ", jmax = ", df_ref$jmax_start, 
                           ", gs = ", df_ref$gs_start))
+```
 
+## Facet Cost
+```{r, fig.height = 6, fig.width = 7}
+## .................................................................................................
 ## Trying facet_grid:
-p_starting_conditions_facet <- df_temp_start %>%
+## - Make individual y-lim levels
+library(facetscales)
+scales_x <- list(
+  "vcmax_start" = scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
+  "jmax_start"  = scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
+  "gs_start"    = scale_x_continuous(limits = c(0, 1),  breaks = seq(0, 1, length.out = 5)))
+
+scales_y <- list(
+  "vcmax_opt" = scale_y_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
+  "jmax_opt"  = scale_y_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
+  "gs_opt"    = scale_y_continuous(limits = c(0, 0.5),  breaks = seq(0.1, 0.5,  length.out = 5)))
+
+## - Call plot
+(p_starting_conditions_facet <- df_temp_start %>%
+        mutate(formulation = ifelse(formulation == "smith37", "Smith", "Farquhar")) %>% 
     pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
     pivot_longer(cols = all_of(targets), names_to = "targets", values_to = "targets_value") %>% 
     dplyr::filter(targets == targets,
@@ -722,16 +744,21 @@ p_starting_conditions_facet <- df_temp_start %>%
     aes(x = driver_value, y = targets_value, color = formulation, shape = formulation, linetype = formulation) +
     geom_line(size = 1.5, alpha = 0.8) +
     # scale_color_grey() +
-    facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
+    # facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
+    # facet_grid(targets ~ driver, scales = "free", switch = "both") +
+    facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = list(y=scales_y, x=scales_x) , switch = "both", labeller = vlabeller) +
+    # facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = "free") +
     theme(legend.position = "bottom") +
-    scale_color_manual(name = bquote(J[max] ~ " - Lim.:"),
-                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
+    scale_color_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
+    scale_linetype_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "solid", "Smith" = "dashed")) +
     
     ## Labels
     ylab("Output Value") +
     xlab("Starting Value") +
     labs(linetype = bquote(J[max] ~ " - Lim.:"),
-         color = bquote(J[max] ~ " - Lim.:"))
+         color = bquote(J[max] ~ " - Lim.:")))
+
+# ggsave("~/projects/mscthesis/temp/p_starting_conditions_facet_pl_eb.jpg", p_starting_conditions_facet, height = 6, width = 7)
 ```
 
 ## Cost Plots
@@ -744,7 +771,7 @@ p_cost + labs(
         ", gs = ", df_ref$gs_start
     )
 )
-ggsave("~/projects/mscthesis/docs/fig-total-carbon-cost.pdf", p_cost, height = 3.5, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-total-carbon-cost_pl_eb.pdf", p_cost, height = 3.5, width = 8)
 ```
 
 
@@ -754,7 +781,7 @@ p_starting_conditions_facet + labs(caption = paste0("Fixed starting values: vcma
                           ", jmax = ", df_ref$jmax_start, 
                           ", gs = ", df_ref$gs_start))
 
-ggsave("~/projects/mscthesis/docs/fig-optim-facet.pdf", p_starting_conditions_facet, height = 6, width = 6)
+# ggsave("~/projects/mscthesis/docs/fig-optim-facet.pdf", p_starting_conditions_facet, height = 6, width = 6)
 ```
 
 ```{r, fig.height = 6, fig.width = 6}
