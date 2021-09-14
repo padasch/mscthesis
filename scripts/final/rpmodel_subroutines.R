@@ -20,10 +20,10 @@ calc_aj <- function(kphio, ppfd, jmax, gammastar, ci = NA, ca, fapar, theta = 0.
     
     ## Get J based on Jmax-Limitation formulation ..................................................
     ## smith37:    Jmax Limitation following Smith et al. (1937):
-    if (j_method == "smith37") {j <- (4 * kphio * iabs) / sqrt(1 + ((4 * kphio * iabs)/(jmax))^2)}
+    if (j_method %in% c("smith37", "wang17")) {j <- (4 * kphio * iabs) / sqrt(1 + ((4 * kphio * iabs)/(jmax))^2)}
     
     ## farquhar89: Jmax Limitation following Farquhar et al. (1989):
-    if (j_method == "farquhar89") {j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4*kphio*theta*iabs*jmax))) / (2*theta)}
+    if (j_method %in% c("farquhar89", "smith19")) {j <- (kphio * iabs + jmax - sqrt(( kphio * iabs + jmax)^2 - (4*kphio*theta*iabs*jmax))) / (2*theta)}
     
     
     ## Find ci if not given
@@ -398,7 +398,7 @@ calc_lue_vcmax_wang17 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soi
 
 
 
-calc_lue_vcmax_smith19 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress){
+calc_lue_vcmax_smith19 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, soilmstress, tc_leaf, do_ftemp_theta = F){
     
     len <- length(out_optchi[[1]])
     
@@ -424,8 +424,13 @@ calc_lue_vcmax_smith19 <- function(out_optchi, kphio, ftemp_kphio, c_molmass, so
     }
     
     ## constants
-    theta <- 0.85    # should be calibratable?
     c_cost <- 0.05336251
+    if (do_ftemp_theta) {
+        theta  <- 0.344375 + 0.012134 * tc_leaf #0.85    # should be calibratable?
+        # warning("CAREFUL: USING ACCLIMATED THETA NOW <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+    } else {
+        theta <- 0.85
+    }
     
     
     ## factors derived as in Smith et al., 2019
@@ -594,9 +599,9 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
                                        fapar, # Input in: -
                                        kphio, # Input in: -
                                        beta = 146, # Input in: -
-                                       vcmax_start = 15,  # Input in: -
-                                       jmax_start  = 40,  # Input in: -
-                                       gs_start    = 0.4, # Input in: -
+                                       vcmax_start = 50e-6  * 24 * 3600,#  #15, #   Input in: mol/m2/h
+                                       jmax_start  = 200e-6 * 24 * 3600,  #  #40, #   Input in: mol/m2/h
+                                       gs_start    = 5e-6  * 24 * 3600,  #  #0.3,#   Input in: mol/m2/h
                                        method_jmaxlim_inst = "smith37", 
                                        method_eb = "off",
                                        which_optimizer = "optimr" # optimr or gensa
@@ -606,7 +611,7 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
     ## Pick Optimizer and set settings based on energy balance model input
     if (which_optimizer == "optimr") {
         if (method_eb == "tealeaves") {
-            ctrl <- list(maxit = 10)
+            ctrl <- list(maxit = 3)
         } else {
             ctrl <- list(maxit = 10000)
         }
@@ -614,8 +619,8 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
         out_optim <- optimr::optimr(
             fn         = optimise_this_gs_vcmax_jmax,
             par        = c( vcmax_start,       jmax_start      , gs_start ), # starting values
-            lower      = c( vcmax_start/1000,  jmax_start/1000,  gs_start/1000 ),
-            upper      = c( vcmax_start*1000,  jmax_start*1000 , gs_start*1000 ),
+            lower      = c( vcmax_start/1000,  jmax_start/1.25,  gs_start/1000 ),
+            upper      = c( vcmax_start*1000,  jmax_start*1.25 , gs_start*1000 ),
             args       = c(tc_air, patm, co2, vpd),
             iabs       = (ppfd * fapar * 3600 * 24),
             kphio      = kphio,
@@ -660,7 +665,7 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
     
     return(out)
     
-    ## Test Case:
+    ## Test Case: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     calc_optimal_gs_vcmax_jmax(tc_air = 10,
                                patm = 101325,
                                co2 = 400,
@@ -669,7 +674,7 @@ calc_optimal_gs_vcmax_jmax <- function(tc_air, # Input in: degC
                                fapar = 1,
                                kphio = 0.05,
                                method_jmaxlim_inst = "smith37",
-                               method_eb = "tealeaves",
+                               method_eb = "off", # tealeaves, plantecophys, off
                                which_optimizer = "optimr")
 }
 
@@ -754,9 +759,20 @@ optimise_this_gs_vcmax_jmax <- function(par,
     cost_jmax   <- c_cost * jmax
     
     if (assim<=0) {
-        stop("Assimilation is negative!")
+        net_assim <- -999999
+        warning("Assimilation is negative!")
     } else {
         net_assim <- -(cost_transp + cost_vcmax + cost_jmax) / assim
+        ## .................................................................................................
+        ## TEST: to include dark respiration here:
+        if (F) {
+            message("Numerical model calculates dark respiration")
+            tc_growth <- 25
+            vcmax25 <- vcmax / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth, method_ftemp = "kumarathunge19")
+            rd <- calc_rd(tc_leaf, vcmax25)
+            assim <- assim - rd
+            net_assim <- -(assim - (cost_transp + cost_vcmax + cost_jmax))
+        }
     }
     
     if (maximize) net_assim <- -net_assim
@@ -891,7 +907,7 @@ calc_tc_leaf_from_tc_air <- function(tc_air   = 25,   # input in degC
     
     # Use uniroots():
     sol_optimr <- try(uniroot(LeafEnergyBalance,
-            interval = c(max(7, tc_air-30), tc_air+30),
+            interval = c(max(1, tc_air-30), tc_air+30),
             Tair      = tc_air,
             gs        = gs,        # input in mol/m2/d/Pa
             VPD       = vpd,       # input in Pa
@@ -1100,7 +1116,9 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
         
         # Get leaf parameters:
         leaf_par <- make_leafpar(replace = list(
-            g_sw = set_units(gs_c*1.6*10^6, "umol/m^2/s/Pa")))
+            g_sw = set_units(gs_c*1.6*10^6, "umol/m^2/s/Pa"),
+            logit_sr = set_units(0.5) # 0.5 = amphitstomatous, 0 = hypostomatous, 1 = hyperstomatous
+            ))
         
         # Get environmental parameters:
         enviro_par <- make_enviropar(replace = list(
@@ -1134,7 +1152,7 @@ calc_tleaf_from_tair_with_fixed_gs <- function(tc_air, # degC
 
 plot_obs_vs_pred_mina <- function(df_in, unnest_var = "fit_sim") {
     
-    df_temp <- df_in %>% unnest(unnest_var)
+    df_temp <- df_in %>% unnest(c(unnest_var, fit_opt))
     
     fit     <- lm(tc_opt_obs ~ tc_opt_sim, data = df_temp)
     sry     <- summary(fit)
@@ -1160,32 +1178,35 @@ plot_obs_vs_pred_mina <- function(df_in, unnest_var = "fit_sim") {
     ## Check
     plot <- df_temp %>%
         # TODO Add non-sense samples to have at least one sample of each limitation in data frame to make plotting work. Does not affect plot nor fit.
-        add_row(min_a_sim = "aj", tc_opt_obs = -1, tc_opt_sim = -1, .before = 1) %>%
-        add_row(min_a_sim = "ac", tc_opt_obs = -1, tc_opt_sim = -1, .before = 1) %>%
+        add_row(climate_zone = "Af", min_a_sim = "aj", tc_opt_obs = -1, tc_opt_sim = -1, .before = 1) %>%
+        add_row(climate_zone = "Af", min_a_sim = "ac", tc_opt_obs = -1, tc_opt_sim = -1, .before = 1) %>%
         ggplot() +
         geom_abline(linetype = "dotted") +
         # geom_point(aes(y = tc_opt_obs, x = tc_opt_sim, color = dataset_yr, shape = min_a_sim)) +
         # geom_point(aes(y = tc_opt_obs, x = tc_opt_sim, shape = min_a_sim, color = min_a_sim), alpha = 0.5) +
         
         # Separating for Ac and Aj differentiation
-        geom_point(data = . %>% dplyr::filter(min_a_sim == "ac"), aes(y = tc_opt_obs, x = tc_opt_sim, color = "Ac"))+
-        geom_point(data = . %>% dplyr::filter(min_a_sim == "aj"), aes(y = tc_opt_obs, x = tc_opt_sim, color = "Aj")) +
-        
+        geom_errorbar(data = df_temp, aes(x = tc_opt_sim, ymin = tc_opt_obs - topt.se, ymax = tc_opt_obs + topt.se, color = climate_zone), alpha = 0.8) +
+        geom_point(data = . %>% dplyr::filter(min_a_sim == "ac"), aes(y = tc_opt_obs, x = tc_opt_sim, shape = "Ac", fill = climate_zone), col = "black", size = 2.5, alpha = 1) +
+        geom_point(data = . %>% dplyr::filter(min_a_sim == "aj"), aes(y = tc_opt_obs, x = tc_opt_sim, shape = "Aj", fill = climate_zone), col = "black", size = 2.5, alpha = 1) +
         geom_smooth(data = df_temp, aes(y = tc_opt_obs, x = tc_opt_sim), method = "lm", size = 0.5, fullrange = T, color = "black") +
         xlim(0, 40) +
         ylim(0, 40) +
-        xlab("Predicted T_opt [°C]") +
-        ylab("Observed T_opt [°C]") +
-        scale_shape_manual(name = "shape", values = c(4, 16)) +
-        scale_color_manual(name = "min(Ac, Aj)", values = c(Ac = "grey50", Aj = "tomato")) +
+        xlab(bquote("Predicted" ~ T[opt] ~ "[°C]")) +
+        ylab("Observed" ~ T[opt] ~ "[°C]") +
+        scale_shape_manual(name = "Limit.", values = c(21, 23), guide = guide_legend(direction = "horizontal", title.position = "top")) +
+        scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
+                           name = "Koeppen-Geiger Climate Zone",
+                           guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+        scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
+                          name = "Koeppen-Geiger Climate Zone",
+                          guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
         # labs(color = "Dataset",
-        labs(color = "Limit.",
-             shape = "Limit.",
-             title = "to be added",
-             subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | bias = "  ~ .(bias)  ~  " | slope = "  ~ .(slope)  ~  " | rmse = "  ~ .(rmse)),
+        labs(title = "to be added",
+             subtitle = bquote(R^2  ~  "="  ~ .(r2)  ~  "| RMSE ="  ~ .(rmse)  ~  "| bias ="  ~ .(bias)),#  ~  "| slope ="  ~ .(slope)),
              caption = paste0("Intercept = 0: ", ifelse(b0_is_0, "Y", "N"), " | slope = 1: ", ifelse(b1_is_1, "Y", "N"),
-                              " | #Lim: Ac = ", n_ac, ", Aj = ", n_aj)
-        )
+                              " | #Lim: Ac = ", n_ac, ", Aj = ", n_aj)) +
+        theme(legend.position = "bottom")
     
     out <- list(plot = plot,
                 df_metrics   = df_metrics)
@@ -1238,8 +1259,9 @@ plot_obs_vs_pred <- function(df_in, x, y) {
 # .............................................................................
 
 plot_topt_vs_tgrowth <- function(df_in,
-                                 unnest_var = c("fit_sim", "forcing"), 
-                                 tc_opt = "tc_opt_sim") { # tc_opt: tc_opt_sim, tc_opt_obs
+                                 unnest_var = c("fit_sim", "forcing", "rpm_accl"), 
+                                 tc_opt = "tc_opt_sim",
+                                 xy = "opt-growth") { # tc_opt: tc_opt_sim, tc_opt_obs
     
     ## Unnest data
     df_temp <- df_in %>% unnest(unnest_var)
@@ -1266,34 +1288,64 @@ plot_topt_vs_tgrowth <- function(df_in,
     
     
     ## Create plots
-    if (energy_balance_on) {
-        p_temp <- df_temp %>%
-            pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
-            ggplot(aes(x = tc_growth, y = tc_opt, color = condition, fill = condition, shape = condition)) +
-            scale_color_manual(values = c(tc_growth_air = "dodgerblue", tc_growth_leaf = "seagreen")) +
-            scale_fill_manual(values = c(tc_growth_air = "dodgerblue", tc_growth_leaf = "seagreen")) +
-            labs(caption = paste("Intersection with one-to-one line: tc_growth_air at ", crs_air, "°C | tc_growth_leaf at ", crs_leaf, "°C"))
+    if (xy == "opt-growth") {
+        if (energy_balance_on) {
+            p_temp <- df_temp %>%
+                pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+                ggplot(aes(x = tc_growth, y = tc_opt, fill = condition, shape = condition, color = condition)) +
+                scale_color_manual(name = "Growth temperature: ",  labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+                scale_fill_manual( name = "Growth temperature: ",  labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+                scale_shape_manual( name = "Growth temperature: ", labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = 21, tc_growth_leaf = 23)) +
+                labs(caption = paste("Intersection with one-to-one line: \n tc_growth_air at ", crs_air, "°C | tc_growth_leaf at ", crs_leaf, "°C"))
+            
+        } else {
+            p_temp <- df_temp %>%
+                pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+                ggplot(aes(x = tc_growth, tc_opt, fill = condition)) +
+                scale_color_manual(name = "Growth temperature: ",  labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+                scale_fill_manual( name = "Growth temperature: ",  labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+                scale_shape_manual( name = "Growth temperature: ", labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = 21, tc_growth_leaf = 23)) +
+                labs(caption = paste("Intersection with one-to-one line: \n tc_growth_air at ", crs_air, "°C | tc_growth_leaf at ", crs_leaf, "°C"))
+        }
         
-    } else {
-        p_temp <- df_temp %>%
-            ggplot(aes(x = tc_growth_air, tc_opt, fill = condition))
-    }
-    
-    p_out <- p_temp +
-        geom_abline(linetype = "dotted") +
-        geom_point(alpha = 0.9, size = 1.75) +
-        geom_smooth(method = "lm", fullrange = T)+
-        xlim(0, 40) +
-        ylim(0, 40) +
-        xlab("T_growth [°C]") +
-        ylab(ifelse(tc_opt == "tc_opt_sim", paste0("T_opt simulated [°C]"), paste0("T_opt observed [°C]"))) +
-        ggpmisc::stat_poly_eq(formula = y ~ x,
-                              aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
-                              parse = TRUE) +
-        theme_bw() +
-        theme(legend.position = "bottom")
+        p_out <- p_temp +
+            geom_abline(linetype = "dotted") +
+            geom_point(alpha = 1, size = 2) +
+            geom_smooth(method = "lm", fullrange = T, alpha = 0.5, se = F) +
+            xlim(0, 40) +
+            ylim(0, 40) +
+            xlab(bquote(T[growth]~"[°C]")) 
+            # ggpmisc::stat_poly_eq(formula = y ~ x,
+            #                       aes(label = paste(..rr.label.., sep = "~~~")),
+            #                       parse = TRUE)
+        
+        if (tc_opt == "tc_opt_sim") {
+            p_out <- p_out + ylab(bquote("simulated" ~ T[opt] ~ "[°C]"))
+        } else {
+            p_out <- p_out + ylab(bquote("observed" ~ T[opt] ~ "[°C]"))
+        }
 
     out <- list(plot = p_out, df_metrics   = NA)
+    
+    } else {
+        p_out <- df_temp %>%
+            ggplot(aes(y = tc_growth_leaf, x = tc_growth_air, color = gs*10^6)) + 
+            geom_abline(linetype = "dotted") +
+            geom_point(alpha = 1, size = 2.75, shape = 16) +
+            geom_smooth(color = "red", fullrange=T, alpha = 0.25, se = F, size = 0.5) +
+            xlim(0, 32) +
+            ylim(0, 32) +
+            xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
+            ylab(bquote("Growth" ~ T[leaf] ~ "[°C]")) +
+            scale_color_gradientn(limits = c(0, 4), colors = c("black", "skyblue1"),
+                                 name = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ P^-1 ~"]:  "))+
+            # scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
+            #                   name = "Koeppen-Geiger Climate Zone",
+            #                   guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
+            theme(legend.position = "bottom")
+    
+    out <- list(plot = p_out, df_metrics   = NA)
+    }
     
     return(out)
 }
@@ -1385,30 +1437,22 @@ plot_two_long_df <- function(df_x,
         ## Plot
         pvcmax <- df_subset %>%
             ggplot() +
-            aes(x = x, y = y) +
-            geom_errorbar(aes(ymin = y - se, ymax = y + se, color = climate_zone),
-                          alpha = 0.5) +
-            geom_point(aes(color = climate_zone),
-                       shape = 16,
-                       alpha = 0.8) +
-            geom_smooth(method = "lm", fullrange = T, color = "black") +
+            geom_errorbar(aes(x = x, ymin = y - se, ymax = y + se, color = climate_zone), alpha = 0.8) +
+            geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 1.5, alpha = 1, shape = 21) +
+            scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                              name = "Koeppen-Geiger Climate Zone",
+                              guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+            scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                              name = "Koeppen-Geiger Climate Zone",
+                              guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
+            geom_smooth(aes(x = x, y = y), method = "lm", fullrange = T, color = "black") +
             geom_abline(linetype = "dotted") +
             ylab(bquote("Observed" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
             xlab(bquote("Predicted" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
             ylim(0, 200) +
             xlim(0, 200) +
-            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                         "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                         "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                         "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                         "#64FFFF", "#F5FFFF"),
-                              name = "Koeppen-Geiger Climate Zone",
-                              guide = guide_legend(
-                                  direction = "horizontal",
-                                  title.position = "top",
-                                  ncol = 10)) +
             labs(title = bquote(.(model) ~ "- Limitation"),
-                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset))),) +
+                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset)))) +
             theme(legend.position = "bottom", legend.justification = "center")
             
         ## Jmax ...................................................................................
@@ -1425,30 +1469,23 @@ plot_two_long_df <- function(df_x,
         pjmax <- df_subset %>%
             ggplot() +
             aes(x = x, y = y) +
-            geom_errorbar(aes(ymin = y - se, ymax = y + se, color = climate_zone),
-                          alpha = 0.5) +
-            geom_point(aes(color = climate_zone),
-                       shape = 16,
-                       alpha = 0.8) +
+            geom_errorbar(aes(x = x, ymin = y - se, ymax = y + se, color = climate_zone), alpha = 0.8) +
+            geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 1.5, alpha = 1, shape = 21) +
             geom_smooth(method = "lm", fullrange = T, color = "black") +
             geom_abline(linetype = "dotted") +
             ylab(bquote("Observed" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
             xlab(bquote("Predicted" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
             ylim(0, 200) +
             xlim(0, 200) +
-            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                          "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                          "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                          "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                          "#64FFFF", "#F5FFFF"),
+            scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                              name = "Koeppen-Geiger Climate Zone",
+                              guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+            scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
                                name = "Koeppen-Geiger Climate Zone",
-                               guide = guide_legend(
-                                   direction = "horizontal",
-                                   title.position = "top",
-                                   ncol = 10)) +
+                               guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
             labs(title = bquote(.(model) ~ "- Limitation"),
-                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset))),) +
-            theme(legend.position = "bottom", legend.justification = "center")
+                 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset)))) +
+            theme(legend.position = "bottom", legend.justification = "center") 
         
         
         out <- list(pvcmax = pvcmax,
@@ -1461,7 +1498,7 @@ plot_two_long_df <- function(df_x,
         p <- df_temp  %>%
             ggplot() +
             aes(x = x, y = y) +
-            geom_point(aes(color = climate_zone)) +
+            geom_point(aes(fill = climate_zone), shape = 21, alpha = 0.8) +
             geom_smooth(method = "lm", fullrange = T) +
             geom_abline() +
             ggpmisc::stat_poly_eq(data = df_temp,
@@ -1474,16 +1511,10 @@ plot_two_long_df <- function(df_x,
             ylim(0, max) +
             xlim(0, max) +
             facet_wrap(~variable, scales = "free") +
-            scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                          "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                          "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                          "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4", "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                          "#64FFFF", "#F5FFFF"),
-                               name = "Koeppen-Geiger Climate Zone",
-                               guide = guide_legend(
-                                   direction = "horizontal",
-                                   title.position = "top",
-                                   ncol = 10))
+            scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
+                              name = "Koeppen-Geiger Climate Zone",
+                              guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+            theme(legend.position = "bottom", legend.justification = "center")
         
         if (kphio_vcmax_corr) {
             p <- p + labs(caption = (paste0("phi correction factor: ", round(b1, 3))))
@@ -1540,15 +1571,15 @@ rpmodel_env_response <- function(df_ref   = "no_input",
     ## Environmental setup
     if (!(is_tibble(df_full))) {
         df_ana <- bind_rows(list =
-                                tibble(
-                                    tc = seq(from = 0, to = 40, length.out = df_ref$nsteps),
-                                    tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
-                                    vpd       = rep(df_ref$vpd, df_ref$nsteps),
-                                    co2       = rep(df_ref$co2, df_ref$nsteps),
-                                    ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
-                                    patm      = rep(df_ref$patm, df_ref$nsteps),
-                                    kphio     = rep(df_ref$kphio, df_ref$nsteps),
-                                    env_var   = "tc"),
+                            tibble(
+                                tc = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                                tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                                vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                                co2       = rep(df_ref$co2, df_ref$nsteps),
+                                ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                                patm      = rep(df_ref$patm, df_ref$nsteps),
+                                kphio     = rep(df_ref$kphio, df_ref$nsteps),
+                                env_var   = "tc"),
                             tibble(
                                 tc        = rep(df_ref$tc, df_ref$nsteps),
                                 tc_home   = seq(from = 0, to = 40, length.out = df_ref$nsteps),
@@ -1693,10 +1724,10 @@ rpmodel_env_response <- function(df_ref   = "no_input",
     
     
     ## Farquhar corrections for kphio:
-    if (settings$rpmodel_accl$method_jmaxlim == "farquhar89") {
-        df_ref$kphio <- df_ref$kphio * 4
-        df_temp$kphio <- df_temp$kphio * 4
-        vnames$kphio <- bquote(Phi[j] ~ "[-]")
+    if (unique(df_full$formulation) == "farquhar89") {
+        df_ref$kphio   <- df_ref$kphio * 4
+        df_temp$kphio  <- df_temp$kphio * 4
+        # vnames$kphio <- bquote(Phi[j] ~ "[-]")
     }
     
     ## Generating plots ####
@@ -1813,7 +1844,7 @@ rpmodel_env_response <- function(df_ref   = "no_input",
                                                              ", tc_home = ", df_ref$tc_home, " [°C]",
                                                              ", vpd = ", df_ref$vpd, " [Pa]",
                                                              ", co2 = ", df_ref$co2, " [ppm]",
-                                                             ", ppfd = ", df_ref$ppfd, " [µmol /m2 / s]",
+                                                             ", ppfd = ", df_ref$ppfd, " [µmol / m2 / s]",
                                                              ", patm = ", df_ref$patm, " [Pa]"))
             }
             
@@ -1858,8 +1889,37 @@ rpmodel_env_response <- function(df_ref   = "no_input",
 }
 
 ## .................................................................................................
-## > COST FUNCTION #####
+## Model metrics #####
+get_model_metrics <- function(dat = NA,
+                              name = "name",
+                              x = "x",
+                              y = "y") {
+    
+    dat$y <- dat[[y]]
+    dat$x <- dat[[x]]
+    
+    fit  <- lm(y ~ x, data = dat)
+    sry  <- summary(fit)
+    coef <- sry$coefficients %>% round(2)
+    rmse <- sqrt( ( c(crossprod(sry$residuals)) / length(sry$residuals) ) ) %>% round(2)
+    bias <- mean(dat$y - dat$x) %>% round(2)
+    r2   <- sry$adj.r.squared %>% round(2)
+    
+    b0   <- coef[1,1]
+    b1   <- coef[2,1]
+    ci   <- confint(fit) %>% round(2)
+    ci_b0 <- ci[1,]
+    ci_b1 <- ci[2,]
+    pval_b0 <- coef[1,4]
+    pval_b1 <- coef[2,4]
+    
+    cat("\n --------------- \n", name, "\n ----------------\n b0 = ", b0, " - CI:", ci_b0, ", pval:", pval_b0 ,"\n b1 = ", b1, " - CI:", ci_b1, ", pval:", pval_b1 ,"\n adj.r2 =", r2, "\n rmse =", rmse, "\n bias =", bias, "\n ----------------"
+    )
+}
 
+## .................................................................................................
+## Labeller
+vlabeller <- function(variable,value){return(vnames[value])}
 
 
 # TEST ZONE -------------------------------------------------------------------

@@ -274,7 +274,6 @@ p2 <- p_eb_pl + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 # p3 <- p_eb_te + xlim(0, 250) + ylim(0, 250) + theme(legend.position = "bottom")
 # 
 # p1 + p2 + p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
-plot(p_eb_pl$data$tc_growth_air, p_eb_pl$data$tc_growth_leaf)
 abline(0, 1)
 p1 / p2
 ```
@@ -425,14 +424,14 @@ p_ana_f89    <-
     plot_layout(guides = "collect")  &
     theme(legend.position = "bottom", legend.justification = "center"))
 
-ggsave("~/projects/mscthesis/docs/fig_comparison_analytic_vcmax.pdf", plot = p, height = 4.5, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-comparison-analytic-vcmax.pdf", plot = p, height = 4.5, width = 8)
 
 # JMAX
 (p <- p_ana_s37$pjmax + p_ana_f89$pjmax + ylab("") +
     plot_layout(guides = "collect")  &
     theme(legend.position = "bottom", legend.justification = "center"))
 
-# ggsave("~/projects/mscthesis/docs/fig_comparison_analytic_jmax.pdf", plot = p, height = 4.75, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-comparison-analytic-jmax.pdf", plot = p, height = 4.75, width = 8)
 ```
 
 ## Numerical Models
@@ -487,14 +486,14 @@ p_num_f89    <-
     plot_layout(guides = "collect")  &
     theme(legend.position = "bottom", legend.justification = "center"))
 
-ggsave("~/projects/mscthesis/docs/fig_comparison_numeric_vcmax.pdf", plot = p, height = 4.25, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-comparison-numeric-vcmax.pdf", plot = p, height = 4.5, width = 8)
 
 # JMAX
 (p <- p_num_s37$pjmax + p_num_f89$pjmax + ylab("") +
     plot_layout(guides = "collect")  &
     theme(legend.position = "bottom", legend.justification = "center"))
 
-# ggsave("~/projects/mscthesis/docs/fig_comparison_numeric_jmax.pdf", plot = p, height = 4.25, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-comparison-numeric-jmax.pdf", plot = p, height = 4.5, width = 8)
 ```
 
 ## ENERGY BALANCE
@@ -507,41 +506,34 @@ p_eb_pl <- background_jobs_results[["p_eb_pl"]]
 p_eb_te <- background_jobs_results[["p_eb_te"]]
 
 # Plots from calculations above:
-ptitle <- "Energy Balance | Numerical | Smith-Formulation" # DATEN VON OBEN HOLEN!
-    
+ptitle <- "Effect of Energy Balance | Smith - Formulation" # DATEN VON OBEN HOLEN!
+
 df_all_eb <- bind_rows(list(
     p_noeb$data %>% dplyr::filter(variable == "vcmax")  %>% mutate(eb_model = "no energy balance"),
     p_eb_pl$data %>% dplyr::filter(variable == "vcmax") %>% mutate(eb_model = "plantecophys"),
     p_eb_te$data %>% dplyr::filter(variable == "vcmax") %>% mutate(eb_model = "tealeaves")))
 
 p1 <- df_all_eb %>% ggplot() +
-    aes(x, y) +
+    geom_errorbar(aes(x = x, ymin = y - vcmax_se, ymax = y + vcmax_se, color = climate_zone), alpha = 1.5) +
+    geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 2, alpha = 1, shape = 21) +
+    scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+    scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
+    geom_smooth(aes(x = x, y = y), method = "lm", fullrange = T, color = "black") +
     geom_abline(linetype = "dotted") +
-    geom_errorbar(aes( ymin = y - vcmax_se, ymax = y + vcmax_se, color = climate_zone), alpha = 0.5) +
-    geom_point(aes(color = climate_zone),
-               shape = 16,
-               alpha = 0.8) +
-    geom_smooth(method = "lm", fullrange = T, color = "black") +
+    
     # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
-    ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..rr.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
-    ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..n.label.., sep = "~~~") ), vjust = 3, parse = TRUE) +
+    ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = x, y = y, label = paste(..rr.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
+    ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = x, y = y, label = paste(..n.label.., sep = "~~~") ), vjust = 3, parse = TRUE) +
     facet_wrap(~eb_model) +
     xlim(0, 250) +
     ylim(0, 250) +
-    scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                  "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                  "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                  "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4",
-                                  "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                  "#64FFFF", "#F5FFFF"),
-                              name = "Koeppen-Geiger Climate Zone",
-                              guide = guide_legend(
-                                  direction = "horizontal",
-                                  title.position = "top",
-                                  ncol = 10)) +
-    theme(legend.position = "none") +
     ylab(bquote("Observed"~V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
-    xlab(bquote("Predicted"~V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]"))
+    xlab(bquote("Predicted"~V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+    theme(legend.position = "bottom", legend.justification = "center")
 
 ## .................................................................................................
 ### T_growth: air vs leaf
@@ -549,8 +541,8 @@ p2 <- df_all_eb %>%
     ggplot() +
     aes(tc_growth_air, tc_growth_leaf) +
     geom_abline(linetype = "dotted") +
-    geom_errorbar(aes( ymin = tc_growth_air*1000 - 10, ymax = tc_growth_air*1000 + 10, color = climate_zone), alpha = 0.5) +
-    geom_point(aes(color = climate_zone)) +
+    geom_errorbar(aes(x = tc_growth_air, ymin = tc_growth_air*1000 - 10, ymax = tc_growth_air*1000 + 10, color = climate_zone), alpha = 0.8) +
+    geom_point(aes(tc_growth_air, tc_growth_leaf, fill = climate_zone), shape = 21, alpha = 0.8, size = 2) +
     # geom_smooth(method = "lm", fullrange = T, color = "black") +
     # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
     # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..rr.label.., sep = "~~~")), vjust = 2.25, parse = TRUE) +
@@ -558,28 +550,24 @@ p2 <- df_all_eb %>%
     facet_wrap(~eb_model) +
     xlim(5, 35) +
     ylim(5, 35) +
-    scale_color_manual(values = c("#960000", "#FF0000", "#FF6E6E", "#FFCCCC",
-                                  "#CC8D14", "#CCAA54", "#FFCC00", "#FFFF64",
-                                  "#007800", "#005000", "#003200", "#96FF00", "#00D700", "#00AA00", "#BEBE00", "#8C8C00", "#5A5A00",
-                                  "#550055", "#820082", "#C800C8", "#FF6EFF", "#646464", "#8C8C8C", "#BEBEBE", "#E6E6E6", "#6E28B4",
-                                  "#B464FA", "#C89BFA", "#C8C8FF", "#6496FF",
-                                  "#64FFFF", "#F5FFFF"),
-                              name = "Koeppen-Geiger Climate Zone",
-                              guide = guide_legend(
-                                  direction = "horizontal",
-                                  title.position = "top",
-                                  ncol = 10)) +
+    scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+    scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
     theme(legend.position = "bottom") +
     ylab(bquote("Growth"~T[leaf] ~ "[°C]")) +
-    xlab(bquote("Growth"~T[air] ~ "[°C]"))
+    xlab(bquote("Growth"~T[air] ~ "[°C]")) +
+    theme(legend.position = "none", legend.justification = "center")
 
-(p <- p1 / p2 + plot_annotation(title = ptitle))
+(p <- p2 / p1 + plot_annotation(title = ptitle))
 
-ggsave("~/projects/mscthesis/docs/fig_energybalance_facet_smith.pdf", p, height = 7, width = 8)
+# ggsave("~/projects/mscthesis/docs/fig-energybalance-facet-smith.pdf", p, height = 7, width = 8)
 ```
 
-# ---
 
+# ---
 
 # Testzone
 ```{r}

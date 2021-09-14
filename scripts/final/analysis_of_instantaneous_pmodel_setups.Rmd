@@ -24,43 +24,176 @@ load("~/data/rsofun_benchmarking/df_drivers_topt_v3.4.Rdata")
 df_drivers_k19     <- df_drivers_topt
 df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
 ```
-
-```{r fig.height=5, fig.width=8}
+## <<<<
+```{r fig.height=6, fig.width=7}
 ## Vcmax25 Models
 ## Prescribed (from Kumarathunge 2019, Table 2)
+xxx_fct <- function(smith_or_farq = "smith37",
+                    ppfd_growth_or_meas = "metainfo",
+                    with_eb_models = F){
+  ## .................................................................................................
+  ## SETUP
+  settings    <- get_settings()
+  settings$rpmodel_accl$method_jmaxlim <- smith_or_farq
+  settings$rpmodel_inst$method_jmaxlim <- smith_or_farq
+  settings$rpmodel_exp$ppfd <- ppfd_growth_or_meas
+  
+  title <- ifelse(smith_or_farq == "smith37", "Smith-Formulation", "Farquhar-Formulation")
+  
+  ## .................................................................................................
+  ## MODEL RUNS
+  ## Analytical
+  df_accl_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+  p_inst_ana  <- df_accl_ana %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+      unnest(metainfo) %>% 
+      dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+      plot_obs_vs_pred_mina(.) 
+  
+  ## Numerical w/o eb
+  settings$rpmodel_accl$method_optim   <- "numerical"
+  df_accl_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+  p_inst_num <- df_accl_num %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+      unnest(metainfo) %>% 
+      dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+      plot_obs_vs_pred_mina(.) 
+  
+if (with_eb_models) {
+  
+  ## Numerical w/ tealeaves
+  settings$rpmodel_accl$method_eb      <- "plantecophys"
+  df_accl_num_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+  p_inst_num_pl <- df_accl_num_pl %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+      unnest(metainfo) %>% 
+      dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+      plot_obs_vs_pred_mina(.) 
+  
+  ## Numerical w/ plantecophys
+  settings$rpmodel_accl$method_eb      <- "tealeaves"
+  df_accl_num_tl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
+  p_inst_num_tl <- df_accl_num_tl %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
+      unnest(metainfo) %>% 
+      dplyr::filter(str_detect(plant_env, "MNE")) %>% 
+      plot_obs_vs_pred_mina(.) 
+  ## .................................................................................................
+  ## Gather dfs into one
+  df_accl_ana$eb_model <- "analytical"
+  df_accl_num$eb_model <- "numerical"
+  df_accl_num_pl$eb_model <- "plantecophys"
+  df_accl_num_tl$eb_model <- "tealeaves"
+    
+  df_all_topt <- bind_rows(list(df_accl_ana, df_accl_num, df_accl_num_pl, df_accl_num_tl)) %>%
+    mutate(eb_model = as.factor(eb_model),
+           smith_or_farq = as.factor(smith_or_farq),
+           ppfd_growth_or_meas = as.factor(ppfd_growth_or_meas))
+  
+  ## .................................................................................................
+  ## PLOTS
+  # p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
+  p2 <- p_inst_ana$plot    + ggtitle("Analytical P-Model")  + labs(caption = NULL) + xlab("") 
+  p3 <- p_inst_num$plot    + ggtitle("Numerical P-Model")  + labs(caption = NULL) + xlab("") + ylab("")
+  p4 <- p_inst_num_pl$plot + ggtitle("Numerical + plantecophys") + labs(caption = NULL)
+  p5 <- p_inst_num_tl$plot + ggtitle("Numerical + tealeaves")    + labs(caption = NULL) + ylab("")
+  
+  # p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect") # prescribed - analytical - numerical
+  p <- p2 + p3 + p4 + p5 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = title)
+  
+  ## .................................................................................................
+  ## SAVE
+  ggsave(paste0("~/projects/mscthesis/docs/fig-comparison-topt-num-ana-", smith_or_farq, "-", settings$rpmodel_exp$ppfd, ".pdf"), p, height = 7, width = 8)
+  
+  ## .................................................................................................
+  ## RETURN
+  out <- list(df_all = df_all_topt,
+              ana = p_inst_ana,
+              num = p_inst_num,
+              pla = p_inst_num_pl,
+              tea = p_inst_num_tl,
+              p_all = p,
+              smith_or_farq = smith_or_farq,
+              ppfd_growth_or_meas = ppfd_growth_or_meas)
+  return(out)
+  
+  } else {
+    ## .................................................................................................
+    ## Without EB Models:
+    # p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
+    p2 <- p_inst_ana$plot    + ggtitle("Analytical P-Model")  + labs(caption = NULL)
+    p3 <- p_inst_num$plot    + ggtitle("Numerical P-Model")  + labs(caption = NULL) + xlab("")
+    
+    p <- p2 + p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = title)
+    
+    ## RETURN
+    out <- list(ana = p_inst_ana,
+                num = p_inst_num,
+                p_all = p,
+                smith_or_farq = smith_or_farq,
+                ppfd_growth_or_meas = ppfd_growth_or_meas)
+    return(out)
+  }
+}
+```
+
+
+## FIGURE: Comparison of tc_opt_sim 
+```{r fig.height=4, fig.width=8.5}
+## For low light:
+p1 <- all_inst_smith_meas$ana$plot + labs(caption = NULL, title = "Smith-Formulation")
+p2 <- all_inst_smith_meas$ana$plot + labs(caption = NULL, title = "Farquhar-Formulation") + ylab("")
+p3 <- all_inst_smith_meas$ana$plot + labs(caption = NULL, title = "Numerical P-Model") + ylab("")
+
+(p <- p1 + p2 + p3 + plot_layout(ncol = 3, guides = "collect") &
+    theme(legend.position = "bottom", plot.subtitle = element_text(size = 9.5)))
+
+ggsave("~/", p, height = 4, width = 8.5)
+
+```
+
+
+```{r fig.height=6, fig.width=7}
+## .................................................................................................
+## Using output from xxx_fct():
+all_inst_smith_meas$ana$plot$data %>% unnest(rpm_accl) %>% pull(vcmax25) *10^6  -> all_inst_smith_meas_jmax
+all_inst_farq_meas$ana$plot$data  %>% unnest(rpm_accl) %>% pull(vcmax25) *10^6  -> all_inst_farq_meas_jmax
+
+t.test(all_inst_smith_meas_jmax, all_inst_farq_meas_jmax)
+
+## .................................................................................................
+## Comparison of jmax25 values between acclimated analytical
 settings    <- get_settings()
-settings$rpmodel_inst$method_vcmax25 <- "prescribed"
-df_accl_fix <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
-p_inst_fix <- df_accl_fix %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
-    unnest(metainfo) %>% 
-    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
-    plot_obs_vs_pred_mina(.) 
+jmax25_smith_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>% unnest(rpm_accl)
 
-## Analytical
-settings$rpmodel_inst$method_vcmax25 <- "rpm_accl"
-df_accl_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
-p_inst_ana <- df_accl_ana %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
-    unnest(metainfo) %>% 
-    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
-    plot_obs_vs_pred_mina(.) 
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+jmax25_farq_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>% unnest(rpm_accl)
 
-## Numerical
+t.test(jmax25_smith_ana$jmax25 *10^6, jmax25_farq_ana$jmax25 *10^6)
+plot(jmax25_smith_ana$jmax25 *10^6, jmax25_farq_ana$jmax25 *10^6, ylim = c(0, 500), xlim = c(0, 500))
+abline(0, 1)
+
+## .................................................................................................
+## Comparison of jmax25 values between analytical and numerical - smith37
+settings    <- get_settings()
 settings$rpmodel_accl$method_optim   <- "numerical"
-settings$rpmodel_accl$method_eb      <- "plantecophys"
-df_accl_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19)
-p_inst_num <- df_accl_num %>% sim_rpmodel(., settings) %>% extract_tc_opt_sim(.) %>% 
-    unnest(metainfo) %>% 
-    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
-    plot_obs_vs_pred_mina(.) 
+jmax25_smith_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>% unnest(rpm_accl)
+
+t.test(jmax25_smith_ana$jmax25 *10^6, jmax25_smith_num$jmax25 *10^6)
+plot(jmax25_smith_ana$jmax25 *10^6, jmax25_smith_num$jmax25 *10^6, ylim = c(0, 400), xlim = c(0, 400))
+abline(0, 1)
+
+## .................................................................................................
+## 
+accl_jmax_ana_smith  <- all_inst_smith_growth$ana$plot$data %>% unnest(rpm_accl) %>% pull(jmax25) * 10^6
+accl_jmax_num_smith  <- all_inst_smith_growth$num$plot$data %>% unnest(rpm_accl) %>% pull(jmax25) * 10^6
+t.test(accl_jmax_ana_smith, accl_jmax_num_smith)
+```
+
+```{r fig.height=6.7, fig.width=5}
+# only_aj_farq <- p_inst_num$plot
+# ggsave(paste0("~/projects/mscthesis/docs/fig-if-aj-is-anet", form, ".pdf"), p_inst_num$plot, height = 4, width = 3)
+p_both
+```
 
 
-## Plots
-p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
-p2 <- p_inst_ana$plot + ggtitle("Analytically derived Vcmax25") + labs(caption = NULL)
-p3 <- p_inst_num$plot + ggtitle("Numerically derived Vcmax25") + labs(caption = NULL)
-
-p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect")
-
+```{r fig.height=5, fig.width=8}
 ## Boxplots to check for Aj limitation in prescribed vcmax
 df_box <- left_join(p_inst_fix$plot$data %>% 
             drop_na(sitename) %>%
@@ -116,30 +249,57 @@ p1 / p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
 
 
 ### Jmax limtation: Smith - Farquhar
-```{r, fig.width=8.5, fig.height=4}
+```{r, fig.width=7, fig.height=4.5}
+## Model Runs
 ## Smith
-settings   <- get_settings()
-# settings$rpmodel_accl$method_optim <- "numerical"
-p_inst_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
-    unnest(metainfo) %>% 
-    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
-    plot_obs_vs_pred_mina(.) 
-
+settings    <- get_settings()
+settings$rpmodel_exp$ppfd <- "metainfo"
+settings$rpmodel_exp$ppfd <- "growth"
+settings$rpmodel_exp$ppfd <- 1500e-6
+df_inst_s37 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
 
 ## Farquhar
-# settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
-settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
-p_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
-    unnest(metainfo) %>% 
-    dplyr::filter(str_detect(plant_env, "MNE")) %>% 
-    plot_obs_vs_pred_mina(.) 
-
-
+settings$rpmodel_accl$method_jmaxlim<- "farquhar89"
+df_inst_f89 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+ 
+## .................................................................................................
 ## Plots
-p1 <- p_inst_s37$plot + ggtitle("Smith")
-p2 <- p_inst_f89$plot + ggtitle("Farquhar")
+p_inst_s37 <- df_inst_s37 %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) %>% plot_obs_vs_pred_mina(.) 
+p_inst_f89 <- df_inst_f89 %>% unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) %>% plot_obs_vs_pred_mina(.) 
 
-p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+p1 <- p_inst_s37$plot + ggtitle("Smith-Formulation") + labs(caption  = "")
+p2 <- p_inst_f89$plot + ggtitle("Farquhar-Formulation") + labs(caption = "") + ylab("")
+
+(p <- p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+# ggsave("~/projects/mscthesis/docs/fig-topt-jmax.pdf", p, height = 4.5, width = 7)
+
+## .................................................................................................
+## Models
+## Smith
+dat  <- p_inst_s37$plot$data %>% drop_na(sitename)
+get_model_metrics(dat = dat, x = "tc_opt_sim", y = "tc_opt_obs", name = "Smith")
+
+## Farquhar
+dat <- p_inst_f89$plot$data %>% drop_na(sitename)
+get_model_metrics(dat = dat, x = "tc_opt_sim", y = "tc_opt_obs", name = "Farquhar")
+```
+
+
+```{r, fig.width=5.5, fig.height=4}
+## .................................................................................................
+## 
+dat %>% unnest(forcing, rpm_accl) %>% names()
+dat %>% unnest(c(forcing, rpm_accl)) %>%
+  pivot_longer(cols = c("vcmax25", "jmax25", "ppfd_measurement", "tc_growth_leaf"), values_to = "value", names_to = "variable") %>% 
+  ggplot() +
+  geom_boxplot(aes(min_a_sim, value)) + 
+  facet_wrap(~variable, scales = "free", ncol = 10)
+
+dat %>% unnest(forcing, rpm_accl) %>% dplyr::filter(min_a_sim == "ac") %>% pull(ppfd_measurement)-> ac
+dat %>% unnest(forcing, rpm_accl) %>% dplyr::filter(min_a_sim == "aj") %>% pull(ppfd_measurement)-> aj
+t.test(ac, aj)
+p
+## .................................................................................................
 ```
 
 
@@ -320,36 +480,167 @@ p1 / p2 + plot_layout(guides = "collect")
 
 
 
-## ENERGY BALANCE
-```{r, fig.height=7.5, fig.width=6}
-## Using plantecophys EB:
-settings <- get_settings()
-settings$rpmodel_accl$method_optim <- "numerical"
-settings$rpmodel_accl$method_jmaxlim <- "smith37"
-settings$rpmodel_accl$method_eb    <- "plantecophys"
-df_pl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) 
+## << ENERGY BALANCE
+```{r, fig.height=6, fig.width=8}
+## Working solutions since 14/09/2021
+plot_topt_tgrowth <- function(df_in = F, y = NA, forcing = "growth", limitation = "smith37"){
+    
+    if (is.na(y)) stop("> Provide y value tc_opt_obs or tc_opt_sim")
+  
+    if (length(df_in) == 1) {
+      
+      ## .................................................................................................
+      ## SETUP
+      settings <- get_settings()
+      settings$rpmodel_accl$method_optim <- "numerical"
+      settings$rpmodel_accl$method_jmaxlim <- limitation
+      settings$rpmodel_inst$method_jmaxlim <- settings$rpmodel_accl$method_jmaxlim
+      settings$rpmodel_exp$ppfd <- forcing
+      
+      ## .................................................................................................
+      ## MODEL RUNS
+      df_eb_reference <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+      
+      ## Using plantecophys EB:
+      settings$rpmodel_accl$method_eb    <- "plantecophys"
+      df_pl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+      
+      ## Using tealeaves EB:
+      settings$rpmodel_accl$method_eb    <- "tealeaves"
+      df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+      
+      ## Gather dfs into one
+      df_eb_reference$eb_model <- "none"
+      df_pl$eb_model <- "plantecophys"
+      df_tl$eb_model <- "tealeaves"
+      
+      df_all_tcopt_tcgrowth <- bind_rows(list(df_eb_reference, df_pl, df_tl)) %>% 
+        mutate(eb_model = as.factor(eb_model)) %>%
+        unnest(c("fit_sim", "forcing", "rpm_accl"))
+    
+    } else {
+      df_all_tcopt_tcgrowth <- df_in %>% 
+        dplyr::filter(eb_model != "analytical") %>%
+        unnest(c("forcing", "rpm_accl")) %>% 
+        mutate(eb_model = ifelse(eb_model == "numerical", paste("none"), paste(eb_model)))
+      
+      limitation <- df_in$smith_or_farq
+      forcing    <- df_in$ppfd_growth_or_meas
+    }
+  
+  ## .................................................................................................
+  ## Plotting
+    if (limitation == "smith37" && forcing == "metainfo") title <- "Effect of energy balance under high light conditions | Smith-Formulation"
+    if (limitation == "farquhar89" && forcing == "metainfo") title <- "Effect of energy balance under high light conditions | Farquhar-Formulation"
+    if (limitation == "smith37" && forcing == "growth") title <- "Effect of energy balance under daily mean light conditions | Smith-Formulation"
+    if (limitation == "farquhar89" && forcing == "growth") title <- "Effect of energy balance under daily mean light conditions | Farquhar-Formulation"
+      
+    ## Labeller:
+    vnames    <-list("none" = "no energy balance", "plantecophys"  = "plantecophys model", "tealeaves"  = "tealeaves model")
+    vlabeller <- function(variable,value){return(vnames[value])}
+  
+    p_opt_gro <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+        # mutate(tc_growth = ifelse(eb_model == "none" & condition == "tc_growth_leaf", -tc_growth, tc_growth)) %>% 
+        ggplot(aes(x = tc_growth_leaf, y = eval(parse(text = y)), fill = eb_model, shape = eb_model, color = eb_model)) +
+        geom_point(alpha = 1, size = 2) +
+        facet_wrap(~eb_model, labeller = vlabeller) +
+        scale_color_manual(name  = "Growth temperature: ", labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+        scale_fill_manual( name  = "Growth temperature: ", labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = "black", tc_growth_leaf = "forestgreen")) +
+        scale_shape_manual( name = "Growth temperature: ", labels = c(tc_growth_air = "air", tc_growth_leaf = "leaf"), values = c(tc_growth_air = 21, tc_growth_leaf = 23)) +
+        geom_abline(linetype = "dotted") +
+        geom_smooth(method = "lm", fullrange = T, alpha = 0.5, se = F) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote(T[growth]~"[°C]")) +
+        theme(legend.position = "bottom")
+    
+        if(y == "tc_opt_obs") p_opt_gro <- p_opt_gro + ylab(bquote("Observed" ~ T[opt] ~ "[°C]"))
+        if(y == "tc_opt_sim") p_opt_gro <- p_opt_gro + ylab(bquote("Simulated" ~ T[opt] ~ "[°C]"))
+        
+    
+    p_air_lea <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") +
+        ggplot(aes(y = tc_growth_leaf, x = tc_growth_air, color = gs*10^6)) + 
+        geom_abline(linetype = "dotted") +
+        geom_point(alpha = 1, size = 2.75, shape = 16) +
+        geom_smooth(color = "red", fullrange=T, alpha = 0.25, se = F, size = 0.5) +
+        facet_wrap(~eb_model, labeller = vlabeller) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
+        ylab(bquote("Growth" ~ T[leaf] ~ "[°C]")) +
+        labs(color = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ P^-1 ~"]:  ")) +
+        theme(legend.position = "bottom")
+    
+    p <- p_air_lea / p_opt_gro +
+        plot_layout(guides = "collect") &
+        plot_annotation(title = paste(title)) &
+        theme(legend.position = "bottom")
+    
+    # ggsave(paste0("~/projects/mscthesis/docs/fig-energybalance-", limitation, "-", forcing, "-",y ,".pdf"), p, height = 6, width = 8)
 
-## Using tealeaves EB:
-settings <- get_settings()
-settings$rpmodel_accl$method_optim <- "numerical"
-settings$rpmodel_accl$method_jmaxlim <- "smith37"
-settings$rpmodel_accl$method_eb    <- "tealeaves"
-df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19)
+  out <- list(df_all = df_all_tcopt_tcgrowth,
+              p_p_opt_gro = p_opt_gro,
+              p_air_lea = p_air_lea,
+              p_all = p)
+  
+  return(out)
+}
+```
 
-## Plots
+```{r}
+## .................................................................................................
+## Run Models:
+all_topt_sim <- plot_topt_tgrowth(y = "tc_opt_sim")
+all_topt_obs <- plot_topt_tgrowth(y = "tc_opt_obs")
+```
+
+
+```{r, fig.height=6, fig.width=8}
+## .................................................................................................
+## METRICS:
+unnested_tcopt_tcgrowth      <- df_all_tcopt_tcgrowth %>% unnest(c("forcing", "rpm_accl"))
+unnested_tcopt_tcgrowth_noeb <- unnested_tcopt_tcgrowth %>% dplyr::filter(eb_model == "none")
+unnested_tcopt_tcgrowth_pla  <- unnested_tcopt_tcgrowth %>% dplyr::filter(eb_model == "plantecophys")
+unnested_tcopt_tcgrowth_tea  <- unnested_tcopt_tcgrowth %>% dplyr::filter(eb_model == "tealeaves")
+
+## TC_OPT ABOVE TC_GROWTH
+cat(
+"In how many cases was optimal temperature below growth temperature?
+--------------------------------------------------------------------
+No eb:",         unnested_tcopt_tcgrowth_noeb %>% dplyr::filter(tc_opt_obs < tc_growth_leaf) %>% nrow(), " / " , nrow(unnested_tcopt_tcgrowth_noeb), "
+plantecophys: ", unnested_tcopt_tcgrowth_pla  %>% dplyr::filter(tc_opt_obs < tc_growth_leaf) %>% nrow(), " / " , nrow(unnested_tcopt_tcgrowth_pla), "
+tealeaves: ",    unnested_tcopt_tcgrowth_tea  %>% dplyr::filter(tc_opt_obs < tc_growth_leaf) %>% nrow(), " / " , nrow(unnested_tcopt_tcgrowth_tea)
+)
+```
+
+
+```{r, fig.height=3.8, fig.width=8}
+## Plots -> old style
 ## Observation
-p_pl_obs <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
-p_tl_obs <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
+p_eb_reference <- df_eb_reference %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
+p_pl_obs <-       df_pl %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
+p_tl_obs <-       df_tl %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_obs")
 
-(p_show <- p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
-# (p_save <- p_pl_obs$plot / p_tl_obs$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
-p_save
+pref <- p_eb_reference$plot + labs(subtitle = "no energy balance") + xlab(NULL)
+p1 <- p_pl_obs$plot + labs(subtitle = "plantecophys") + ylab(NULL)
+p2 <- p_tl_obs$plot + labs(subtitle = "tealeaves") + ylab(NULL) + xlab(NULL)
+
+(p_topt_growth <- p_eb_reference + p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+# ggsave("~/projects/mscthesis/docs/fig-topt-uncoupled.pdf", p_show, height = 3.8, width = 5)
 
 ## Simulations
-p_pl_sim <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
-p_tl_sim <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+p_eb_reference <- df_eb_reference %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+p_pl_obs <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
+p_tl_obs <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim")
 
-p_pl_sim$plot / p_tl_sim$plot + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+p1 <- p_pl_obs$plot + labs(subtitle = "plantecophys")  #caption = NULL, 
+p2 <- p_tl_obs$plot + labs(subtitle = "tealeaves") + ylab(NULL)  #caption = NULL, 
+
+(p_show <- p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+# ggsave("~/projects/mscthesis/docs/fig-topt-uncoupled-sim.pdf", p_show, height = 3.8, width = 5)
+
 
 ## STATISTICS
 lm_air <- lm(tc_opt_obs ~ tc_growth , p_pl_obs$plot$data %>% dplyr::filter(condition == "tc_growth_air"))
@@ -359,9 +650,33 @@ lm_leaf_tl <- lm(tc_opt_obs ~ tc_growth , p_tl_obs$plot$data %>% dplyr::filter(c
 # confint(lm_air,level=0.95)
 # confint(lm_leaf_pl,level=0.95)
 # confint(lm_leaf_tl,level=0.95)
+
+
+p_pl_obs <- df_pl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim", xy = "s")
+p_tl_obs <- df_tl %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim", xy = "s")
+p_eb_reference <- df_eb_reference %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE")) %>%  plot_topt_vs_tgrowth(tc_opt = "tc_opt_sim",  xy = "s")
+
+pref <- p_eb_reference$plot + labs(subtitle = "no energy balance") + xlab(NULL)
+p1 <- p_pl_obs$plot + labs(subtitle = "plantecophys") + ylab(NULL)
+p2 <- p_tl_obs$plot + labs(subtitle = "tealeaves") + ylab(NULL) + xlab(NULL)
+
+(p_show <- pref + p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom")) # & plot_annotation(title = "Uncoupling of air and leaf temperatures")
+# ggsave("~/projects/mscthesis/docs/fig-topt-energybalance.pdf", p_show, height = 3.8, width = 8)
+
+## T_OPT < T_GROWTH
+table(pref$data$tc_growth_leaf > pref$data$tc_opt_sim)
+table(p1$data$tc_growth_leaf > p1$data$tc_opt_sim)
+table(p2$data$tc_growth_leaf > p2$data$tc_opt_sim)
+
+## Comparison of gs from tealeaves and plantecophys:
+gs_ref <- p_eb_reference %>% unnest(rpm_accl) %>% pull(gs)
+gs_pl <- df_pl %>% unnest(rpm_accl) %>% pull(gs)
+gs_tl <- df_tl %>% unnest(rpm_accl) %>% pull(gs)
+
+t.test(gs_ref, gs_pl)
+t.test(gs_ref, gs_tl)
+t.test(gs_pl, gs_tl)
 ```
-
-
 
 
 # T_opt - T_growth
@@ -404,6 +719,8 @@ df_num_ %>% plot_topt_vs_tgrowth()
 ```{r fig.height=8}
 ## Kumarathunge Setup
 settings   <- get_settings()
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+settings$rpmodel_inst$method_jmaxlim <- "farquhar89"
 p_inst_k19 <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>%
     unnest(metainfo) %>% 
     dplyr::filter(str_detect(plant_env, "MNE")) %>% 
@@ -415,6 +732,7 @@ df <- df %>% mutate(bias = (tc_opt_sim - tc_opt_obs)/tc_opt_sim*100) %>% unnest(
 
 lm_bias <- lm(bias ~ vcmax25 + jmax25 + xi + vpd + co2 + patm + tc_growth_air + tc_home, data = df)
 
+library(car)
 crPlots(lm_bias, ylim = c(-100, 100), ylab = "Bias [%]", layout = c(3,3), col.lines = c("tomato", "blue2"),
         smooth = FALSE, lwd = 3,
         main = "Partial Residual Plots for Model Bias - Analytical Smith 1937")
@@ -440,4 +758,109 @@ p_inst_fix$plot$data%>% unnest(forcing, rpm_accl) %>%
   xlim(0,40) +
   geom_abline()
 ```
+#________________
+# Figures for thesis:
+## Run models:
+```{r fig.height=6, fig.width=7}
+all_inst_smith_meas_with_eb   <- xxx_fct(smith_or_farq = "smith37",    ppfd_growth_or_meas = "metainfo", with_eb_models = T)
+all_inst_farq_meas_with_eb    <- xxx_fct(smith_or_farq = "farquhar89",    ppfd_growth_or_meas = "metainfo", with_eb_models = T)
+
+all_inst_smith_growth_with_eb  <- xxx_fct(smith_or_farq = "smith37",    ppfd_growth_or_meas = "growth", with_eb_models = T)
+all_inst_farq_growth_with_eb   <- xxx_fct(smith_or_farq = "farquhar89",    ppfd_growth_or_meas = "growth", with_eb_models = T)
+```
+
+## Make Plots:
+### low light tc_opt_sim
+#### thesis
+```{r fig.height=4.5, fig.width=4}
+(p <- all_inst_smith_growth_with_eb$ana$plot + labs(caption = NULL, title = NULL) + guides(fill = guide_legend(ncol = 4, title.position = "top")))
+ggsave("~/projects/mscthesis/docs/final-thesis-topt-sim-lowlight.pdf", p, height = 4.5, width = 4)
+```
+
+#### appendix
+```{r fig.height=7, fig.width=7}
+p1 <- all_inst_farq_growth_with_eb$ana$plot + xlab(NULL) + labs(caption = NULL, title = "Analytical P-Model + Farquhar")
+p2 <- all_inst_farq_growth_with_eb$num$plot + xlab(NULL) + ylab(NULL) + labs(caption = NULL, title = "Numerical P-Model")
+p3 <- all_inst_farq_growth_with_eb$pla$plot + labs(caption = NULL, title = "Numerical + plantecophys model")
+p4 <- all_inst_farq_growth_with_eb$tea$plot + ylab(NULL) + labs(caption = NULL, title = "Numerical + tealeaves model")
+
+(p <- p1 + p2 + p3 + p4 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+ggsave("~/projects/mscthesis/docs/final-app-topt-sim-lowlight.pdf", p, height = 7, width = 7)
+```
+
+
+
+### high light tc_opt_sim
+#### thesis
+```{r fig.height=3.75, fig.width=8}
+p1 <- all_inst_smith_meas_with_eb$ana$plot + labs(title = "Smith", caption = NULL)
+p2 <-  all_inst_farq_meas_with_eb$ana$plot + labs(title = "Farquhar", caption = NULL) + ylab(NULL)
+p3 <-  all_inst_farq_meas_with_eb$num$plot + labs(title = "Numerical", caption = NULL) + ylab(NULL)
+
+(p <- p1 + p2 + p3 + plot_layout(guides = "collect", ncol = 3) & theme(legend.position = "bottom", plot.subtitle = element_text(size = 9)))
+ggsave("~/projects/mscthesis/docs/final-thesis-topt-sim-highlight.pdf", p, height = 3.75, width = 8)
+```
+
+#### appendix
+```{r fig.height=3.75, fig.width=7}
+p1 <- all_inst_smith_meas_with_eb$pla$plot + labs(title = "plantecophys", caption = NULL)
+p2 <-  all_inst_farq_meas_with_eb$tea$plot + labs(title = "tealeaves", caption = NULL) + ylab(NULL)
+
+(p <- p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+ggsave("~/projects/mscthesis/docs/final-app-topt-sim-highlight.pdf", p, height = 3.75, width = 7)
+```
+
+### sensitivities -> get them from scratchpad file dae 13/09/2021
+#### thesis
+```{r fig.height=7, fig.width=7}
+(p <- p_smith / p_farq +
+    plot_layout(guides = "collect") &
+    # plot_annotation(title = "Sensitivity of assimilation rates to growth light conditions") &
+    theme(legend.position = "bottom"))
+ggsave("~/projects/mscthesis/docs/final-thesis-sens-acaj-ppfdgrowth.pdf", p, height = 7, width = 7)
+```
+
+```{r fig.height=4, fig.width=6}
+p <- get_sens_gs()
+p
+ggsave("~/projects/mscthesis/docs/final-thesis-sens-energybalances.pdf", p, height = 4, width = 6)
+```
+
+#### appendix
+```{r fig.height=4, fig.width=8}
+(p <- p_gross_2 + pnet_2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+ggsave("~/projects/mscthesis/docs/final-app-sens-agross-anet.pdf", p, height = 4, width = 8)
+```
+
+
+### observations + eb
+#### thesis: high light
+```{r fig.height=6, fig.width=8}
+(p <- plot_topt_tgrowth(df_in = all_inst_smith_meas_with_eb$df_all)$p_all)
+ggsave("~/projects/mscthesis/docs/final-thesis-tleaf-topt-obs-highlight.pdf", p, height = 6, width = 8)
+```
+
+#### appendix: low light
+```{r}
+
+
+
+p <- all_tleaf_obs_smith_lowlight$p_all
+ggsave("~/projects/mscthesis/docs/final-app-tleaf-topt-obs-lowlight.pdf", p, height = , width = )
+```
+
+### simulations + eb
+#### thesis: high light
+```{r}
+(p <- all_tleaf_sim_smith_highlight$p_all)
+ggsave("~/projects/mscthesis/docs/final-thesis-tleaf-topt-sim-highlight.pdf", p, height = , width = )
+```
+
+#### thesis: low light
+```{r}
+p <- all_tleaf_sim_smith_lowlight$p_all
+ggsave("~/projects/mscthesis/docs/final-app-tleaf-topt-sim-lowlight.pdf", p, height = , width = )
+```
+
+
 

@@ -29,9 +29,9 @@ p_s37 <- rpmodel_env_response(settings = settings,
                               # df_full = p_s37$data,
                               p_output = "per_target")
 
-p_s37$plot[[1]] + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
+p_s37$plot[[1]] + ylim(0, 1)   + theme(legend.position = "bottom") + xlab("")
 p_s37$plot[[2]] + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
-p_s37$plot[[3]] + ylim(0, 400) + theme(legend.position = "bottom") + xlab("")
+p_s37$plot[[3]] + ylim(0, 600) + theme(legend.position = "bottom") + xlab("")
 ```
 
 ## Farquhar89
@@ -43,8 +43,8 @@ p_f89 <- rpmodel_env_response(settings = settings,
                               p_output = "per_target")
 
 p_f89$plot[[1]] + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
-p_f89$plot[[2]] + ylim(0, 100) + theme(legend.position = "bottom") + xlab("")
-p_f89$plot[[3]] + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_f89$plot[[2]] + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_f89$plot[[3]] + ylim(0, 600) + theme(legend.position = "bottom") + xlab("")
 ```
 
 ## Energy Balance
@@ -77,21 +77,25 @@ settings <- get_settings()
 
 ## Environmental setup
 df_ref <- get_df_ref(settings)
+df_ref$nsteps <- 50
+df_ref$vcmax_start <-  50e-6  * 24 * 3600 #  #15, #   Input in: mol/m2/h           ### -> df_ref$vcmax_start * 3600 * 24
+df_ref$jmax_start  <-  200e-6 * 24 * 3600 #  #40, #   Input in: mol/m2/h           ### -> df_ref$jmax_start * 3600 * 24
+df_ref$gs_start    <-  5e-6  * 24 * 3600  #  #0.3,#   Input in: mol/m2/h           ### -> df_ref$gs_start * 3600 * 24
 
 ## Total cost versus optimized parameters ..........................................................
 ## Tibble building ####
 df_cost <- bind_rows(list =
-                   tibble(vcmax = seq(1, 20, length.out = df_ref$nsteps),
+                   tibble(vcmax = seq(1, upper_end, length.out = df_ref$nsteps),
                           jmax  = rep(df_ref$jmax_start, df_ref$nsteps),
                           gs    = rep(df_ref$gs_start, df_ref$nsteps),
                           cost_var   = "vcmax"),
                    tibble(vcmax = rep(df_ref$vcmax_start, df_ref$nsteps),
-                          jmax  = seq(1, 20, length.out = df_ref$nsteps),
+                          jmax  = seq(1, upper_end, length.out = df_ref$nsteps),
                           gs    = rep(df_ref$gs_start, df_ref$nsteps),
                           cost_var   = "jmax"),
                    tibble(vcmax = rep(df_ref$vcmax_start, df_ref$nsteps),
                           jmax  = rep(df_ref$jmax_start, df_ref$nsteps),
-                          gs    = seq(0.01, 1, length.out = df_ref$nsteps),
+                          gs    = seq(0.01, 10, length.out = df_ref$nsteps),
                           cost_var   = "gs"))
         
         
@@ -174,9 +178,8 @@ p_cost <- df_temp %>%
     # ylab(paste("Relative total costs"))
     # ylab(bquote("Costs: ("~1.6*g[s]*D + beta*V[cmax] + c*J[max]~") / "~A[gross])) +
     ylab("Total carbon cost") +
-    ylim(500, 2500) +
-    scale_color_manual(name = bquote(J[max] ~ "- Lim.:"),
-                   values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
+    # ylim(500, 2500) +
+    scale_color_manual(name = bquote(J[max] ~ "- Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
 
 ## Plot effect on variable-related costs: ## UNIMPORTANT
 ## For vcmax:
@@ -343,20 +346,28 @@ p_starting_conditions_patch <- p1 / p2 / p3 + plot_layout(guides = "collect") & 
 ```
 
 ## Facet Cost
-```{r, fig.height = 6, fig.width = 7}
+```{r, fig.height = 7, fig.width = 7}
 ## .................................................................................................
 ## Trying facet_grid:
 ## - Make individual y-lim levels
 library(facetscales)
 scales_x <- list(
-  "vcmax_start" = scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
-  "jmax_start"  = scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
-  "gs_start"    = scale_x_continuous(limits = c(0, 1),  breaks = seq(0, 1, length.out = 5)))
+  "vcmax_start" = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+  "jmax_start"  = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+  "gs_start"    = scale_x_continuous(limits = c(0, 10))) #breaks = seq(0, 1, length.out = 5)))
 
 scales_y <- list(
-  "vcmax_opt" = scale_y_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
-  "jmax_opt"  = scale_y_continuous(limits = c(0, 20), breaks = seq(0, 20, length.out = 5)),
-  "gs_opt"    = scale_y_continuous(limits = c(0, 0.5),  breaks = seq(0.1, 0.5,  length.out = 5)))
+  "vcmax_opt" = scale_y_continuous(limits = c(0, 250)),  #breaks = seq(0, 20, length.out = 5)),
+  "jmax_opt"  = scale_y_continuous(limits = c(0, 1000)),  #breaks = seq(0, 20, length.out = 5)),
+  "gs_opt"    = scale_y_continuous(limits = c(0, 10))) #breaks = seq(0.1, 0.5,  length.out = 5)))
+
+## Call Labeller
+vnames <-list("vcmax_start" = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "jmax_start"   = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "gs_start"       = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"),
+              "vcmax_opt"   = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "jmax_opt"     = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "gs_opt"         = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"))
 
 ## - Call plot
 (p_starting_conditions_facet <- df_temp_start %>%
@@ -368,13 +379,14 @@ scales_y <- list(
     
     ## Aesthetics
     ggplot() + 
-    aes(x = driver_value, y = targets_value, color = formulation, shape = formulation, linetype = formulation) +
+    # aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation, linetype = formulation) +
+    aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation) +
     geom_line(size = 1.5, alpha = 0.8) +
     # scale_color_grey() +
     # facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
     # facet_grid(targets ~ driver, scales = "free", switch = "both") +
-    # facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = list(y=scales_y, x=scales_x) , switch = "both", labeller = vlabeller) +
-    facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = "free") +
+    facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = list(y=scales_y, x=scales_x) , switch = "both", labeller = vlabeller) +
+    # facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = "free") +
     theme(legend.position = "bottom") +
     scale_color_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
     scale_linetype_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "solid", "Smith" = "dashed")) +
@@ -384,32 +396,33 @@ scales_y <- list(
     xlab("Starting Value") +
     labs(linetype = bquote(J[max] ~ " - Lim.:"),
          color = bquote(J[max] ~ " - Lim.:")))
+        
+    # labs(subtitle = bquote("Fixed starting values:" ~ V[cmax] ~ " = " ~ .(df_ref$vcmax_start/3600/24*10^6) ~
+    #                       "," ~ J[max] ~ " = " ~ .(df_ref$jmax_start/3600/24*10^6) ~
+    #                       "," ~ g[s] ~ " = " ~ .(df_ref$gs_start/3600/24*10^6)),
+    #      title = "Effect of starting values (no energy balance)"))
 
-# ggsave("~/projects/mscthesis/temp/p_starting_conditions_facet_pl_eb.jpg", p_starting_conditions_facet, height = 6, width = 7)
+
+
+# ggsave("~/projects/mscthesis/docs/fig-facet-numerical-stability-pl-eb.pdf", p_starting_conditions_facet, height = 7, width = 7)
 ```
 
 ## Cost Plots
 ```{r, fig.height = 3.5, fig.width = 8}
 ## Cost Plot  ..........................................................................................................
+vnames <-list("vcmax" = bquote(V[cmax] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+              "jmax"  = bquote(J[max] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+              "gs" = bquote(g[s] ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
 p_cost + labs(
     caption = paste0(
-        "Fixed starting values: vcmax = ", df_ref$vcmax_start,
-        ", jmax = ", df_ref$jmax_start,
-        ", gs = ", df_ref$gs_start
+        "Fixed starting values: vcmax = ", df_ref$vcmax_start/24/3600*10^6,
+        ", jmax = ", df_ref$jmax_start/24/3600*10^6,
+        ", gs = ", df_ref$gs_start/24/3600*10^6
     )
-)
+) + ylim(0, 250000)
 # ggsave("~/projects/mscthesis/docs/fig-total-carbon-cost_pl_eb.pdf", p_cost, height = 3.5, width = 8)
 ```
 
-
-```{r, fig.height = 6, fig.width = 6}
-## Facet Plot .................................................................................................
-p_starting_conditions_facet + labs(caption = paste0("Fixed starting values: vcmax = ", df_ref$vcmax_start, 
-                          ", jmax = ", df_ref$jmax_start, 
-                          ", gs = ", df_ref$gs_start))
-
-# ggsave("~/projects/mscthesis/docs/fig-optim-facet.pdf", p_starting_conditions_facet, height = 6, width = 6)
-```
 
 ```{r, fig.height = 6, fig.width = 6}
 p_starting_conditions_patch
@@ -419,12 +432,12 @@ p_starting_conditions_patch
 
 
 # >> Plots for thesis
-## Comparison between methods:
+## Numerical - Analytical
 ```{r, fig.height = 8, fig.width = 8}
 ## Smith
 p1 <- p_s37$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Smith-Formulation: Sensitivity Analysis of Chi")
-p2 <- p_s37$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 100) # ggtitle("Smith-Formulation: Sensitivity Analysis of Vcmax")
-p3 <- p_s37$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Smith-Formulation: Sensitivity Analysis of Jmax")
+p2 <- p_s37$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Smith-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_s37$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Smith-Formulation: Sensitivity Analysis of Jmax")
 
 (p <- p2 / p3 / p1 +
           plot_layout(guides = "collect") &
@@ -436,8 +449,8 @@ ggsave("~/projects/mscthesis/docs/fig-lim-sens-smith.pdf", p, height = 8, width 
 
 ## Farquhar
 p1 <- p_f89$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Farq-Formulation: Sensitivity Analysis of Chi")
-p2 <- p_f89$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 100) # ggtitle("Farq-Formulation: Sensitivity Analysis of Vcmax")
-p3 <- p_f89$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Farq-Formulation: Sensitivity Analysis of Jmax")
+p2 <- p_f89$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Farq-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_f89$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Farq-Formulation: Sensitivity Analysis of Jmax")
 
 (p <- p2 / p3 / p1 +
         plot_layout(guides = "collect") &
@@ -448,7 +461,7 @@ ggsave("~/projects/mscthesis/docs/fig-lim-sens-farq.pdf", p, height = 8, width =
 ```
 
 
-## Comparison between formulations:
+## Farquhar - Smith
 ```{r, fig.height = 7, fig.width = 8}
 ## Vcmax and Jmax:
 both_ana <- bind_rows(list(p_s37$data %>% dplyr::filter(model == "analytical"),
@@ -461,11 +474,11 @@ p_both_num_t <- rpmodel_env_response(settings = settings, df_full = both_num, p_
 p_both_num_d <- rpmodel_env_response(settings = settings, df_full = both_num, p_output = "per_driver", scales_to_one = T)
 
  
-p1 <- p_both_ana$plot[[2]] +   labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 100) # ggtitle("Analytical Model: Sensitivity Analysis of Vcmax") + 
-p2 <- p_both_ana$plot[[3]] +   labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
+p1 <- p_both_ana$plot[[2]] +   labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Analytical Model: Sensitivity Analysis of Vcmax") + 
+p2 <- p_both_ana$plot[[3]] +   labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
 p5 <- p_both_ana$plot[[1]] +   labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
-p3 <- p_both_num_t$plot[[2]] + labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 100) # ggtitle("Numerical Model: Sensitivity analysis of Vcmax") + 
-p4 <- p_both_num_t$plot[[3]] + labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
+p3 <- p_both_num_t$plot[[2]] + labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Numerical Model: Sensitivity analysis of Vcmax") + 
+p4 <- p_both_num_t$plot[[3]] + labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
 p6 <- p_both_num_t$plot[[1]] + labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
 
 (pana <- p1 / p2 / p5 +
@@ -481,36 +494,6 @@ p6 <- p_both_num_t$plot[[1]] + labs(caption = NULL, title = NULL) + ylab(bquote(
 ggsave("~/projects/mscthesis/docs/fig-model-sens-ana.pdf", pana, height = 8, width = 8)
 ggsave("~/projects/mscthesis/docs/fig-model-sens-num.pdf", pnum, height = 8, width = 8) 
 ```
-
-
-```{r, fig.height = 5, fig.width = 8}
-## Chi:
-p_chi_ana <- p_both_ana$plot[[1]] +   labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]"))
-p_chi_num <- p_both_num_t$plot[[1]] + labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]"))
-p_chi_ana / p_chi_num + plot_layout(guides = "collect" ) & theme(legend.position = "bottom") & plot_annotation(title = bquote("Sensitivity of" ~ chi ~ "- Formulations | Analytical Models"))
-```
-
-```{r, fig.height = 5, fig.width = 10}
-p1 / p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = "Sensitivity of Vcmax and Jmax compared across Jmax-formulations")
-```
-
-
-## Total costs vs. variable
-```{r, fig.height=4.5, fig.width=4.5}
-p_cost
-```
-
-## Starting-Optimized values
-```{r, fig.height=6, fig.width=5.5}
-p_starting_conditions_facet
-p_starting_conditions_patch
-```
-
-```{r}
-df_ref
-```
-
-
 
 
 # Testzone

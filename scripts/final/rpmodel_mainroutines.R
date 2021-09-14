@@ -30,6 +30,7 @@ rpmodel <- function(
     
     ## Other settings
     do_ftemp_kphio = TRUE,
+    do_ftemp_theta = F,
     do_soilmstress = FALSE,
     returnvar = NULL,
     verbose = FALSE 
@@ -127,11 +128,13 @@ rpmodel <- function(
     } else if (method_jmaxlim == "smith19" | method_jmaxlim == "farquhar89"){
         
         out_lue_vcmax <- calc_lue_vcmax_smith19(
-            out_optchi,
-            kphio,
-            ftemp_kphio,
-            c_molmass,
-            soilmstress
+            out_optchi = out_optchi,
+            kphio = kphio,
+            ftemp_kphio = ftemp_kphio,
+            c_molmass = c_molmass,
+            soilmstress = soilmstress,
+            tc_leaf = tc_growth_leaf,
+            do_ftemp_theta = do_ftemp_theta
         )
         
     } else if (method_jmaxlim=="none"){
@@ -172,7 +175,14 @@ rpmodel <- function(
     jmax              <- calc_jmax(kphio_accl, iabs, ci, gammastar, method = method_jmaxlim)
     ftemp_jmax        <- calc_ftemp_inst_jmax(tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
     jmax25            <- jmax / ftemp_jmax
-    aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim)$aj
+    
+    if (do_ftemp_theta) {
+      theta  <- 0.344375 + 0.012134 * tc_growth_leaf #0.85    # should be calibratable?
+      # warning("CAREFUL: USING ACCLIMATED THETA FOR AJ (rpmodel -> analytical corrolaries) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+    } else {
+      theta <- 0.85
+    }
+    aj                <- calc_aj(kphio_accl, ppfd, jmax, gammastar, ci, ca, fapar, j_method = method_jmaxlim, model = method_optim, theta = theta)$aj
     
     ## Dark respiration
     ftemp_inst_rd      <- calc_ftemp_inst_rd( tc_growth_leaf )
@@ -212,7 +222,6 @@ rpmodel <- function(
     
     chi     <- varlist_optim$chi_mine
     ci      <- varlist_optim$ci_mine
-    xi      <- NA
     gs      <- varlist_optim$gs_mine
     vcmax   <- varlist_optim$vcmax_mine
     jmax    <- varlist_optim$jmax_mine
@@ -221,6 +230,12 @@ rpmodel <- function(
     jmax25  <- jmax  /  calc_ftemp_inst_jmax( tcleaf = tc_growth_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = method_ftemp)
     a_gross <- varlist_optim$assim
     kphio_accl <- varlist_optim$kphio
+    
+    ## Not sure if this is doable here:
+    gammastar  <- calc_gammastar( tc_growth_leaf, patm )
+    kmm        <- calc_kmm( tc_growth_leaf, patm )
+    ns_star    <- calc_viscosity_h2o( tc_growth_leaf, patm ) / calc_viscosity_h2o( kTo, kPo )  # (unitless)
+    xi         <- sqrt( (beta * ( kmm + gammastar ) ) / ( 1.6 * ns_star ) )
   }
     
   ## Output definition ####
@@ -264,6 +279,14 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     settings <- get_settings()
   }
   
+  ## Making sure that accl and inst model use the same Jmax Limitation:
+  if (settings$rpmodel_accl$method_jmaxlim != settings$rpmodel_inst$method_jmaxlim) {
+    warn_inst_accl_jmax_not_same <- T
+    # settings$rpmodel_inst$method_jmaxlim <- settings$rpmodel_accl$method_jmaxlim
+  } else {
+    warn_inst_accl_jmax_not_same <- F
+  }
+  
   ## Dampen drivers to get acclimated values:
   df_drivers <- df_drivers %>% 
     mutate(forcing = purrr::map(forcing, ~mutate(., tc_growth_air = dampen_vec(temp, settings$rpmodel_accl$tau$tc_air))),
@@ -291,6 +314,20 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     right_join(df_evaluation %>% dplyr::filter(sitename != "ALC-02", sitename != "DBA-01")) %>% 
     drop_na(ppfd) # To make sure, no rows with NA's enter loop below
   
+  ## .................................................................................................
+  ## Testing different light-acclimation:
+  if (T & "metainfo" %in% names(df_rpmodel_accl) & settings$rpmodel_exp$ppfd == "metainfo") {
+    df_rpmodel_accl  <- df_rpmodel_accl %>% mutate(ppfd_growth = purrr::map_dbl(metainfo, ~pull(., ppfd_measurement)))
+    
+  } else if (is.numeric(settings$rpmodel_exp$ppfd)) {
+    df_rpmodel_accl  <- df_rpmodel_accl %>% mutate(ppfd_growth = settings$rpmodel_exp$ppfd)
+    
+  } else {
+    # Nothing to do, this is standard procedure
+    # df_rpmodel_accl  <- df_rpmodel_accl %>% mutate(ppfd_growth = ppfd_growth*3)
+  }
+  
+  ## .................................................................................................
   ## Calculating acclimated variables:
   for (row in 1:nrow(df_rpmodel_accl)) {
     if (settings$verbose) {
@@ -336,6 +373,8 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     df_rpmodel_accl$a_gross[row]   <- df_loop$a_gross
   }
   
+  
+  ## .................................................................................................
   ## Return final dataframe, ready for instantaneous P-Model
   out <- df_rpmodel_accl %>%
     ## Get nested acclimated data
@@ -352,6 +391,15 @@ run_rpmodel_accl <- function(settings = NA,     # Options: Setting to NA takes d
     nest(forcing = c(df_drivers$forcing[[1]] %>% dplyr::select(-date) %>% names(), "tc_home", "tc_growth_leaf")) %>% 
     left_join(df_evaluation)
     
+  
+  ## .................................................................................................
+  ## Communication:
+  if ("metainfo" %in% names(df_rpmodel_accl) & settings$rpmodel_exp$ppfd == "metainfo") {
+    warning("> Acclimating jmax to measurement ppfd")
+    }
+  if (warn_inst_accl_jmax_not_same) {
+    warning("> Jmax formulation for accl and inst model were not the same. Model set to: ", settings$rpmodel_accl$method_jmaxlim)
+  }
   
   return(out)
 }
@@ -383,10 +431,13 @@ sim_rpmodel <- function(df_in, settings){
   df_sim <- df_out %>%
     unnest(c(rpm_accl, forcing, metainfo)) 
   
-  if (settings$rpmodel_exp$ppfd == "metainfo") {
+  if (settings$rpmodel_exp$ppfd == "metainfo" | settings$rpmodel_exp$ppfd == "growth") {
     df_sim$ppfd <- df_sim$ppfd_measurement
   } else if (is.numeric(settings$rpmodel_exp$ppfd)) {
     df_sim$ppfd <- settings$rpmodel_exp$ppfd
+  } else if (F & settings$rpmodel_exp$ppfd == "growth") {
+    df_sim$ppfd <- df_sim$ppfd_growth
+    message("Simulating topt under ppfd_growth forcing")
   }
   
   if (settings$rpmodel_inst$method_vcmax25 == "prescribed") {
@@ -422,7 +473,7 @@ sim_rpmodel <- function(df_in, settings){
       out_pmodel_inst_opt = rpmodel_inst(vcmax25    = df_sim$vcmax25[site],
                                          jmax25     = df_sim$jmax25[site],
                                          xi         = df_sim$xi[site],
-                                         gs         = df_sim$gs_accl[site],
+                                         gs         = df_sim$gs[site],
                                          tc_leaf    = tc_leaf_array[i],
                                          vpd        = df_sim$vpd[site],
                                          co2        = df_sim$co2[site],
@@ -430,14 +481,16 @@ sim_rpmodel <- function(df_in, settings){
                                          ppfd       = df_sim$ppfd[site],
                                          patm       = df_sim$patm[site],
                                          kphio      = df_sim$kphio[site],
-                                         tc_growth  = df_sim$tc_growth_air[site],
+                                         tc_growth_air  = df_sim$tc_growth_air[site],
+                                         tc_growth_leaf  = df_sim$tc_growth_leaf[site],
                                          tc_home    = df_sim$tc_home[site],
                                          
                                          # settings
                                          settings    = settings
       )
       
-      anet_array[i]      = out_pmodel_inst_opt$anet
+      anet_array[i]      = out_pmodel_inst_opt$anet # out_pmodel_inst_opt$aj - out_pmodel_inst_opt$rd
+      min_a_array[i]     = out_pmodel_inst_opt$min_a
       agross_array[i]    = out_pmodel_inst_opt$agross
       vcmax_array[i]     = out_pmodel_inst_opt$vcmax
       jmax_array[i]      = out_pmodel_inst_opt$jmax
@@ -446,7 +499,6 @@ sim_rpmodel <- function(df_in, settings){
       gs_array[i]        = out_pmodel_inst_opt$gs
       ac_array[i]        = out_pmodel_inst_opt$ac
       aj_array[i]        = out_pmodel_inst_opt$aj
-      min_a_array[i]     = out_pmodel_inst_opt$min_a
       dummy_array[i]     = out_pmodel_inst_opt$dummy
     }
     
@@ -471,7 +523,7 @@ sim_rpmodel <- function(df_in, settings){
 #---------------------------------#
 # Function for instant rpmodel    #
 #---------------------------------#
-rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd, patm, kphio, tc_growth, tc_home, settings) {
+rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd, patm, kphio, tc_growth_air, tc_growth_leaf, tc_home, settings) {
   
   
   ## Prepare output:
@@ -488,52 +540,58 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
     min_a  = NA,
     dummy  = NA)
   
+  ## .................................................................................................
+  ## Set dummy variable to NA
   dummy_var <- NA
   
+  ## .................................................................................................
   ## Get instantaneous conditions:
-  # Instantaneous partial pressure of CO2
-  ca = co2_to_ca(co2, patm)
+  ca        <- co2_to_ca(co2, patm)
+  gammastar <- calc_gammastar(tc_leaf, patm)
+  kmm       <- calc_kmm(tc_leaf, patm)
+  ns_star   <- calc_viscosity_h2o( tc_leaf, patm ) / calc_viscosity_h2o( tc = 25.0, p = 101325.0 )
+  vcmax     <- vcmax25 * calc_ftemp_inst_vcmax(tc_leaf, tc_growth_air,          tcref = 25.0, method_ftemp = settings$rpmodel_inst$method_ftemp)
+  jmax      <- jmax25  * calc_ftemp_inst_jmax( tc_leaf, tc_growth_air, tc_home, tcref = 25.0, method_ftemp = settings$rpmodel_inst$method_ftemp)
   
-  # Instantaneous gammastar:
-  gammastar = calc_gammastar(tc_leaf, patm)
-  
-  # Instantaneous K:
-  kmm = calc_kmm(tc_leaf, patm)
-  
-  # Instantaneous viscosity:
-  ns_star <- calc_viscosity_h2o( tc_leaf, patm ) / calc_viscosity_h2o( tc = 25.0, p = 101325.0 )
-  
-  # Instantaneous vcmax and jmax:
-  vcmax  <- vcmax25 * calc_ftemp_inst_vcmax(tc_leaf, tc_growth,          tcref = 25.0, method_ftemp = settings$rpmodel_inst$method_ftemp)
-  jmax   <- jmax25  * calc_ftemp_inst_jmax( tc_leaf, tc_growth, tc_home, tcref = 25.0, method_ftemp = settings$rpmodel_inst$method_ftemp)
-  
-  
-  ## Call analytical or numerical model
+  ## .................................................................................................
+  ## Analytical model called where xi is known:
   
   if (T | settings$rpmodel_accl$method_optim == "analytical") {
+    if (F && settings$rpmodel_accl$method_optim == "numerical") {
+      message("Careful: Stomatal conductance model is based on analytical acclimated P-Model forced with tc_air!
+              -> here xi is calculated from tc_growth_leaf which might be wrong...")
+    }
     
     # Instantaneous leaf-internal CO2: ci
     ci <- calc_ci(ca, gammastar, xi, vpd, patm, settings$rpmodel_inst$method_ci)
     
     # Electron Transport Rate: Aj
-    aj <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca = co2, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "analytical")$aj
+    if (F & settings$rpmodel_accl$method_jmaxlim == "farquhar89") {
+      theta  <- 0.344375 + 0.012134 * tc_growth_leaf #0.85    # should be calibratable?
+      # warning("CAREFUL: USING ACCLIMATED THETA FOR AJ (rpmodel_inst) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+    } else {
+      theta <- 0.85
+    }
+    
+    aj <- calc_aj(kphio, ppfd, jmax, gammastar, ci, ca = co2, fapar, j_method = settings$rpmodel_inst$method_jmaxlim, model = "analytical", gs = NA)$aj
     
     # Carboxylation Rate: Ac
     ac <- calc_ac(ci = ci, ca = co2, gammastar = gammastar, kmm = kmm, vcmax = vcmax, model = "analytical")$ac
     
   } else if (settings$rpmodel_accl$method_optim == "numerical") {
+    stop("rpmodel_inst(): Numerical model not yet compliant with instantaneous model.")
     
-    ## Numerical Model ####
-    ## Get optimal vcmax, jmax and gs -> unrealistic because on timescale of acclimation!
+    ## .................................................................................................
+    ## Numerical Model called where gs is free - in development
     
-    final_opt <- calc_optimal_tcleaf_vcmax_jmax(tc_leaf = tc_leaf,
-                                                patm = patm,
-                                                co2 = co2,
-                                                vpd = vpd,
-                                                ppfd = ppfd * 3600 * 24,
-                                                fapar = fapar,
-                                                kphio = kphio,
-                                                method_jmaxlim_inst = settings$rpmodel_inst$method_jmaxlim)
+    final_opt <- calc_optimal_gs_vcmax_jmax(tc_leaf = tc_leaf,
+                                            patm = patm,
+                                            co2 = co2,
+                                            vpd = vpd,
+                                            ppfd = ppfd * 3600 * 24,
+                                            fapar = fapar,
+                                            kphio = kphio,
+                                            method_jmaxlim_inst = settings$rpmodel_inst$method_jmaxlim)
     
     ## Check if optimization converged
     opt_convergence <- final_opt$out_optim$convergence
@@ -547,8 +605,8 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
     gs      <- varlist_optim$gs_mine
     vcmax   <- varlist_optim$vcmax_mine
     jmax    <- varlist_optim$jmax_mine
-    vcmax25 <- vcmax / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth, method_ftemp = settings$rpmodel_inst$method_ftemp)
-    jmax25  <- jmax  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth, tchome = tc_home, method_ftemp = settings$rpmodel_inst$method_ftemp)
+    vcmax25 <- vcmax / calc_ftemp_inst_vcmax(tcleaf = tc_leaf, tcgrowth = tc_growth_air, method_ftemp = settings$rpmodel_inst$method_ftemp)
+    jmax25  <- jmax  / calc_ftemp_inst_jmax( tcleaf = tc_leaf, tcgrowth = tc_growth_air, tchome = tc_home, method_ftemp = settings$rpmodel_inst$method_ftemp)
     a_gross <- varlist_optim$assim
     
     # Electron Transport Rate: Aj
@@ -563,10 +621,22 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
     
     # Instantaneous leaf-internal CO2: ci
     ci <- max(ci_c, ci_j)
+    
+    # Gross assimilation
+    a_gross <- min(ac, aj)
+    
+    # Criteria to be optimized: 
+    a <- xxx
+    b <- xxx
+    criteria <- a_gross - a*gs*vpd_leaf - b*vcmax
+    return(criteria)
   }
   
+  ## .................................................................................................
+  ## Calculation of net assimilation
+  
   # Dark Respiration: Rd
-  rd <- calc_rd(tc_leaf, vcmax25, tc_growth, q10 = settings$rpmodel_inst$q10, method_rd25 = settings$rpmodel_inst$method_rd25, method_rd_scale = settings$rpmodel_inst$method_rd)
+  rd <- calc_rd(tc_leaf, vcmax25, tc_growth_leaf, q10 = settings$rpmodel_inst$q10, method_rd25 = settings$rpmodel_inst$method_rd25, method_rd_scale = settings$rpmodel_inst$method_rd)
   
   # Gross assimilation rate: A_gross
   agross <- min(aj, ac)
@@ -585,7 +655,8 @@ rpmodel_inst <- function(vcmax25, jmax25, xi, gs, tc_leaf, vpd, co2, fapar, ppfd
   # Stomatal conductance: gs
   gs <- anet/(ca - ci)
   
-  # Definition of output:
+  ## .................................................................................................
+  ## Definition of output:
   out <- list(
     agross = agross,
     anet = anet,
@@ -615,7 +686,7 @@ get_settings <- function(){
                         method_jmaxlim    = "smith37",        # Options: smith37 (i.e. wang17) or farquhar89 (i.e. smith19)
                         method_ftemp      = "kumarathunge19", # Options: kattge07 or kumarathunge2019
                         method_eb         = "off",            # Options: off, plantecophys or tealeaves
-                        kphio_calib       = 0.08179,       # Options: "reported" to pick values reported in Smith et al. 2019, respectively Wang et al. (2019) or numeric [0, 1], calibrated via rsofun v3.3: 0.09423773
+                        kphio_calib       = 0.06946276,       # Options: "reported" to pick values reported in Smith et al. 2019, respectively Wang et al. (2019) or numeric [0, 1], calibrated via rsofun v3.3: 0.09423773
                         apar_soilm_calib  = 0.33349283,       # Options: numeric, calibrated via rsofun v3.3
                         bpar_soilm_calib  = 1.45602286,       # Options: numeric, calibrated via rsofun v3.3
                         tau = list(tc_air = 30,               # Options: numeric in days
@@ -638,6 +709,8 @@ get_settings <- function(){
     rpmodel_exp = list(ppfd               = "metainfo")       # Options: "ambient", metainfo" or numeric in mol/m2/s
   )
   
+  settings$rpmodel_inst$method_jmaxlim <- settings$rpmodel_accl$method_jmaxlim
+  
   return(settings)
 }
 
@@ -652,13 +725,15 @@ get_df_ref <- function(settings = NA){
   df_ref <- tibble(
     ## Environment:
     tc        = 25,
-    tc_home   = 20,
+    tc_home   = 25,
+    tc_growth = 25,
     vpd       = 1000,
     co2       = 400,
     ppfd      = 800e-6,
     patm      = 101325,
     fapar     = 1,
     kphio     = settings$rpmodel_accl$kphio_calib,
+    ci        = 275,
     
     ## Photosynthetic variables
     kmm       = calc_kmm(25, 101325),
@@ -666,10 +741,10 @@ get_df_ref <- function(settings = NA){
     ns_star   = 1,
     
     ## Parameters
-    nsteps    = 10,
-    vcmax_start = 2,
-    jmax_start = 8,
-    gs_start = 0.6)
+    nsteps      = 50,
+    vcmax_start = 50e-6,
+    jmax_start  = 100e-6,
+    gs_start    = 5e-6)
   return(df_ref)
 }
 
@@ -703,7 +778,7 @@ extract_tc_opt_sim <- function(df_in){
            tc_growth_air = purrr::map_dbl(forcing, ~dplyr::select(., tc_growth_air) %>% pull)) %>% 
     
     # Get a_growth from predictions
-    mutate(agrowth_sim  = purrr::map_dbl(rpm_sim, ~.$anet_sim[ which(round(.$tc_leaf_sim, 1) == round(tc_growth_air, 1)) ] )) %>%
+    mutate(agrowth_sim  = 0) %>% #purrr::map_dbl(rpm_sim, ~.$anet_sim[ which(round(.$tc_leaf_sim, 1) == round(tc_growth_air, 1)) ] )) %>%
     
     # Get a_growth from data
     unnest(fit_opt) %>% 

@@ -1038,6 +1038,8 @@ df_obs_qc <- df_obs_qc %>%
     
 saveRDS(df_275_qc, "~/data/mscthesis/final/df_275_opt_postQC.rds")
 saveRDS(df_obs_qc, "~/data/mscthesis/final/df_obs_opt_postQC.rds")
+
+# df_obs_qc <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
 ```
 
 ## Summary post QC
