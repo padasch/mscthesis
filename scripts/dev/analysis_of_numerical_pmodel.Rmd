@@ -1,0 +1,658 @@
+---
+title: "Analysis of Numerical rpmodel"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	error = F,
+	message = FALSE,
+	warning = FALSE
+)
+suppressMessages(source("~/projects/mscthesis/scripts/final/source_fct_pkg.R"))
+```
+
+# Sanity Checks
+# Environmental Response
+## Smith37
+```{r, fig.height = 3.5, fig.width = 8}
+settings <- get_settings()
+p_s37 <- rpmodel_env_response(settings = settings,
+                              # df_full = p_s37$data,
+                              p_output = "per_target")
+
+p_s37$plot[[1]] + ylim(0, 1)   + theme(legend.position = "bottom") + xlab("")
+p_s37$plot[[2]] + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_s37$plot[[3]] + ylim(0, 600) + theme(legend.position = "bottom") + xlab("")
+```
+
+## Farquhar89
+```{r, fig.height = 3.5, fig.width = 8}
+settings <- get_settings()
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+p_f89 <- rpmodel_env_response(settings = settings,
+                              # df_full = p_f89$data,
+                              p_output = "per_target")
+
+p_f89$plot[[1]] + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
+p_f89$plot[[2]] + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_f89$plot[[3]] + ylim(0, 600) + theme(legend.position = "bottom") + xlab("")
+```
+
+## Energy Balance
+```{r, fig.height = 3, fig.width = 10}
+settings <- get_settings()
+settings$rpmodel_accl$method_optim <- "numerical"
+settings$rpmodel_accl$method_eb <- "plantecophys"
+p_s37_pl <- rpmodel_env_response(settings = settings)
+p_s37_pl <- rpmodel_env_response(settings = settings, df_full = p_s37_pl$data)
+p_s37_pl$plot[[1]]  + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
+p_s37_pl$plot[[2]]  + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_s37_pl$plot[[3]]  + ylim(0, 400) + theme(legend.position = "bottom") + xlab("")
+```
+
+```{r, fig.height = 3, fig.width = 10}
+settings <- get_settings()
+settings$rpmodel_accl$method_eb <- "tealeaves"
+p_s37_te <- rpmodel_env_response(settings = settings)
+p_f89_pl$plot[[1]]  + ylim(0, 1) + theme(legend.position = "bottom") + xlab("")
+p_f89_pl$plot[[2]]  + ylim(0, 200) + theme(legend.position = "bottom") + xlab("")
+p_f89_pl$plot[[3]]  + ylim(0, 400) + theme(legend.position = "bottom") + xlab("")
+```
+
+# Stability of Cost Function
+## Functions and Plots
+```{r, fig.height = 3.5, fig.width = 8}
+
+
+
+```
+
+## Facet Cost
+```{r, fig.height = 4, fig.width = 4}
+## .................................................................................................
+## Trying facet_grid:
+df_temp_start <- get_cost_function_instability()
+
+## - Make individual y-lim levels
+library(facetscales)
+scales_x <- list(
+  "vcmax_start" = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+  "jmax_start"  = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+  "gs_start"    = scale_x_continuous(limits = c(0, 10))) #breaks = seq(0, 1, length.out = 5)))
+
+scales_y <- list(
+  "vcmax_opt" = scale_y_continuous(limits = c(0, 250)),  #breaks = seq(0, 20, length.out = 5)),
+  "jmax_opt"  = scale_y_continuous(limits = c(0, 1000)),  #breaks = seq(0, 20, length.out = 5)),
+  "gs_opt"    = scale_y_continuous(limits = c(0, 10))) #breaks = seq(0.1, 0.5,  length.out = 5)))
+
+## Call Labeller
+vnames <-list("vcmax_start" = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "jmax_start"   = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "gs_start"       = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"),
+              "vcmax_opt"   = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "jmax_opt"     = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+              "gs_opt"         = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"))
+
+## - Call plot
+(p_starting_conditions_facet <- df_temp_start %>%
+        mutate(formulation = ifelse(formulation == "smith37", "Smith", "Farquhar")) %>% 
+    pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+    pivot_longer(cols = all_of(targets), names_to = "targets", values_to = "targets_value") %>% 
+    dplyr::filter(targets == targets,
+                  driver  == opt_var) %>%
+    
+    ## Aesthetics
+    ggplot() + 
+    # aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation, linetype = formulation) +
+    aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation) +
+    geom_line(size = 1, alpha = 0.8) +
+    # scale_color_grey() +
+    # facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
+    # facet_grid(targets ~ driver, scales = "free", switch = "both") +
+    facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = list(y=scales_y, x=scales_x) , switch = "both", labeller = vlabeller) +
+    # facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = "free") +
+    theme(legend.position = "bottom", 
+          text = element_text(size = 6)) +
+    scale_color_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
+    scale_linetype_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "solid", "Smith" = "dashed")) +
+    
+    ## Labels
+    ylab("Output Value") +
+    xlab("Starting Value") +
+    labs(linetype = bquote(J[max] ~ " - Lim.:"),
+         color = bquote(J[max] ~ " - Lim.:")))
+        
+    # labs(subtitle = bquote("Fixed starting values:" ~ V[cmax] ~ " = " ~ .(df_ref$vcmax_start/3600/24*10^6) ~
+    #                       "," ~ J[max] ~ " = " ~ .(df_ref$jmax_start/3600/24*10^6) ~
+    #                       "," ~ g[s] ~ " = " ~ .(df_ref$gs_start/3600/24*10^6)),
+    #      title = "Effect of starting values (no energy balance)"))
+
+
+
+# ggsave("~/projects/mscthesis/docs/fig-facet-starting-values.pdf", p_starting_conditions_facet, height = 4, width = 4)
+```
+
+## Cost Plots
+```{r, fig.height = 3.5, fig.width = 8}
+## Cost Plot  ..........................................................................................................
+library(scales)
+vnames <-list("vcmax" = bquote(V[cmax] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+              "jmax"  = bquote(J[max] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+              "gs" = bquote(g[s] ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
+p_cost + labs(
+    caption = paste0(
+        "Fixed starting values: vcmax = ", df_ref$vcmax_start/24/3600*10^6,
+        ", jmax = ", df_ref$jmax_start/24/3600*10^6,
+        ", gs = ", df_ref$gs_start/24/3600*10^6)) +
+    scale_y_continuous(labels = scientific) +
+    xlab("Final optimized value") 
+    # ylim(0, 1000000)
+# ggsave("~/projects/mscthesis/docs/fig-total-carbon-cost_pl_eb.pdf", p_cost, height = 3.5, width = 8)
+```
+
+
+```{r, fig.height = 6, fig.width = 6}
+p_starting_conditions_patch
+```
+
+
+
+
+# >> Plots for thesis
+## Numerical - Analytical
+```{r, fig.height = 8, fig.width = 8}
+## Smith
+p1 <- p_s37$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Smith-Formulation: Sensitivity Analysis of Chi")
+p2 <- p_s37$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Smith-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_s37$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Smith-Formulation: Sensitivity Analysis of Jmax")
+
+(p <- p2 / p3 / p1 +
+          plot_layout(guides = "collect") &
+          theme(legend.position = "bottom") &
+          plot_annotation(title = bquote("Sensitivity Analysis for Smith - Formulation | Comparison of analytical vs. numerical setup")))
+
+ggsave("~/projects/mscthesis/docs/fig-lim-sens-smith.pdf", p, height = 8, width = 8)
+
+
+## Farquhar
+p1 <- p_f89$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Farq-Formulation: Sensitivity Analysis of Chi")
+p2 <- p_f89$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Farq-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_f89$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Farq-Formulation: Sensitivity Analysis of Jmax")
+
+(p <- p2 / p3 / p1 +
+        plot_layout(guides = "collect") &
+        theme(legend.position = "bottom") &
+        plot_annotation(title = bquote("Sensitivity Analysis for Farquhar - Formulation | Comparison of analytical vs. numerical setup")))
+
+ggsave("~/projects/mscthesis/docs/fig-lim-sens-farq.pdf", p, height = 8, width = 8)
+```
+
+
+## Farquhar - Smith
+```{r, fig.height = 7, fig.width = 8}
+## Vcmax and Jmax:
+both_ana <- bind_rows(list(p_s37$data %>% dplyr::filter(model == "analytical"),
+                           p_f89$data %>% dplyr::filter(model == "analytical")))
+both_num <- bind_rows(list(p_s37$data %>% dplyr::filter(model == "numerical"),
+                           p_f89$data %>% dplyr::filter(model == "numerical")))
+
+p_both_ana <- rpmodel_env_response(settings = settings, df_full = both_ana,p_output = "per_target")
+p_both_num_t <- rpmodel_env_response(settings = settings, df_full = both_num, p_output = "per_target", scales_to_one = F)
+p_both_num_d <- rpmodel_env_response(settings = settings, df_full = both_num, p_output = "per_driver", scales_to_one = T)
+
+ 
+p1 <- p_both_ana$plot[[2]] +   labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Analytical Model: Sensitivity Analysis of Vcmax") + 
+p2 <- p_both_ana$plot[[3]] +   labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
+p5 <- p_both_ana$plot[[1]] +   labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
+p3 <- p_both_num_t$plot[[2]] + labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Numerical Model: Sensitivity analysis of Vcmax") + 
+p4 <- p_both_num_t$plot[[3]] + labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
+p6 <- p_both_num_t$plot[[1]] + labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
+
+(pana <- p1 / p2 / p5 +
+        plot_layout(guides = "collect" ) &
+        theme(legend.position = "bottom") &
+        plot_annotation(title = bquote("Sensitivity analyis for analytical Models | Comparison of  " ~ J[max] ~ "- Formulations")))
+
+(pnum <- p3 / p4 / p6 + 
+        plot_layout(guides = "collect") & 
+        theme(legend.position = "bottom") & 
+        plot_annotation(title = bquote("Sensitivity analyis for numerical Models | Comparison of  " ~ J[max] ~ "- Formulations")))
+
+ggsave("~/projects/mscthesis/docs/fig-model-sens-ana.pdf", pana, height = 8, width = 8)
+ggsave("~/projects/mscthesis/docs/fig-model-sens-num.pdf", pnum, height = 8, width = 8) 
+```
+
+
+# Testzone
+
+## Old cost function
+```{r}
+## Environmental conditions and respective optimal variables
+(opt_vars <- calc_optimal_tcleaf_vcmax_jmax(tc_air = 25,
+                                           patm = 101325,
+                                           co2 = 400,
+                                           vpd = 1000,
+                                           ppfd = 130,
+                                           fapar = 1,
+                                           kphio = 0.05,
+                                           beta = 146,
+                                           c_cost = 0.41,
+                                           vcmax_start = 20,
+                                           gs_start = 0.5,
+                                           jmax_start = 20,
+                                           method_jmaxlim_inst = "smith37")$varlist)
+vcmax_fix <- opt_vars$vcmax_mine
+jmax_fix  <- opt_vars$jmax_mine
+gs_fix    <- opt_vars$gs_mine
+
+## Arrays to visualize plot dependencies
+l_out   <- 100
+lims    <- 10
+vcmax_0 <- vcmax_fix
+jmax_0  <- jmax_fix
+gs_0    <- gs_fix
+vcmax_v <- seq(0.1, vcmax_0*lims, length.out = l_out)
+jmax_v  <- seq(0.1, jmax_0*lims, length.out = l_out)
+gs_v    <- seq(0.01, gs_0*lims, length.out = l_out)
+cost_3d  <- array (data = NA, dim=c(l_out,l_out,l_out))
+
+
+## PLOTTING
+cost_gg2d <- rep(NA, length(vcmax_v))
+cost_gg2d <- bind_rows(list(tibble(cost_vcmax = cost_gg2d,
+                                  cost_jmax  = cost_gg2d,
+                                  cost_gs    = cost_gg2d,
+                                  vcmax      = vcmax_v,
+                                  jmax       = jmax_v,
+                                  gs         = gs_v,
+                                  formulation = "smith37"),
+                          tibble(cost_vcmax = cost_gg2d,
+                                  cost_jmax  = cost_gg2d,
+                                  cost_gs    = cost_gg2d,
+                                  vcmax      = vcmax_v,
+                                  jmax       = jmax_v,
+                                  gs         = gs_v,
+                                  formulation = "farquhar89")))
+
+
+## Free vcmax
+for (i in 1:nrow(cost_gg2d)) {
+    cost_gg2d$cost_vcmax[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(cost_gg2d$vcmax[i], gs_fix, jmax_fix),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = cost_gg2d$formulation[i],
+        maximize   = TRUE
+    )
+}
+## Free jmax
+for (i in 1:nrow(cost_gg2d)) {
+    cost_gg2d$cost_jmax[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(vcmax_fix, gs_fix, cost_gg2d$jmax[i]),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = cost_gg2d$formulation[i],
+        maximize   = TRUE
+    )
+}
+## Free gs
+for (i in 1:nrow(cost_gg2d)) {
+    cost_gg2d$cost_gs[i] <- optimise_this_tcleaf_vcmax_jmax(
+        par        = c(vcmax_fix, cost_gg2d$gs[i], jmax_fix),
+        args       = c(tc_leaf, patm, co2, vpd),
+        iabs       = (ppfd * fapar),
+        kphio      = kphio,
+        method_jmaxlim_inst = cost_gg2d$formulation[i],
+        maximize   = TRUE
+    )
+}
+
+
+p1 <- ggplot(cost_gg2d) + aes(vcmax, cost_vcmax, linetype = formulation) + geom_line(color = "brown") + ylim(0, 3000) + xlim(0, 25) + ylab("Costs for Vcmax") + xlab("Vcmax [mol/m2/h]")
+p2 <- ggplot(cost_gg2d) + aes(jmax, cost_jmax, linetype = formulation) + geom_line(color = "brown") + ylim(0, 3000) + xlim(0, 25) + ylab("Costs for Jmax") + xlab("Jmax [mol/m2/h]")
+p3 <- ggplot(cost_gg2d) + aes(gs, cost_gs, linetype = formulation) + geom_line(color = "brown") + ylim(0, 3000) + xlim(0, 1) + ylab("Costs for transp.") + xlab("g_s [mol/m2/h/Pa]")
+
+p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect") & theme_bw() & theme(legend.position = "bottom", legend.direction = "vertical")
+```
+
+## Changing shape of env output
+```{r}
+rpmodel_env_response <- function(df_ref   = "no_input",
+                                 settings = "no_input",
+                                 targets  = "no_input",
+                                 drivers  = "no_input",
+                                 remove_non_convergence = F,
+                                 scales_to_one          = T,
+                                 p_output = "per-target"){
+    
+    ## Input Check ####
+    ## Environmental setup
+    if (df_ref == "no_input") {
+        df_ref <- tibble(tc        = 25,
+                         tc_home   = 20,
+                         vpd       = 1000,
+                         co2       = 400,
+                         ppfd      = 1500e-6,
+                         patm      = 101325,
+                         nsteps    = 50)
+    }
+    
+    
+    ## rpmodel setup
+    if (settings == "no_input") {settings <- get_settings()}
+    if (targets == "no_input") {targets   <- c("chi", "vcmax", "jmax", "gs", "a_gross")} # , "vcmax25", "jmax25"
+    if (drivers == "no_input") {drivers   <- c("tc", "vpd", "co2", "ppfd", "patm")}
+    
+    
+    ## Tibble building ####
+    ## Environmental setup
+    df_ana <- bind_rows(list =
+                           tibble(
+                               tc = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                               tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                               vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                               co2       = rep(df_ref$co2, df_ref$nsteps),
+                               ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                               patm      = rep(df_ref$patm, df_ref$nsteps),
+                               env_var   = "tc"),
+                       tibble(
+                               tc        = rep(df_ref$tc, df_ref$nsteps),
+                               tc_home   = seq(from = 0, to = 40, length.out = df_ref$nsteps),
+                               vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                               co2       = rep(df_ref$co2, df_ref$nsteps),
+                               ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                               patm      = rep(df_ref$patm, df_ref$nsteps),
+                               env_var   = "tc_home"),
+                       tibble(
+                               tc        = rep(df_ref$tc, df_ref$nsteps),
+                               tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                               vpd       = seq(from = 200, to = 2000, length.out = df_ref$nsteps),
+                               co2       = rep(df_ref$co2, df_ref$nsteps),
+                               ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                               patm      = rep(df_ref$patm, df_ref$nsteps),
+                               env_var   = "vpd"),
+                       tibble(
+                               tc        = rep(df_ref$tc, df_ref$nsteps),
+                               tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                               vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                               co2       = seq(from = 200, to = 1000, length.out = df_ref$nsteps),
+                               ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                               patm      = rep(df_ref$patm, df_ref$nsteps),
+                               env_var   = "co2"),
+                       tibble(
+                               tc        = rep(df_ref$tc, df_ref$nsteps),
+                               tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                               vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                               co2       = rep(df_ref$co2, df_ref$nsteps),
+                               ppfd      = seq(from = 100e-6, to = 3000e-6, length.out = df_ref$nsteps),
+                               patm      = rep(df_ref$patm, df_ref$nsteps),
+                               env_var   = "ppfd"),
+                       tibble(
+                               tc        = rep(df_ref$tc, df_ref$nsteps),
+                               tc_home   = rep(df_ref$tc_home, df_ref$nsteps),
+                               vpd       = rep(df_ref$vpd, df_ref$nsteps),
+                               co2       = rep(df_ref$co2, df_ref$nsteps),
+                               ppfd      = rep(df_ref$ppfd, df_ref$nsteps),
+                               patm      = seq(from = calc_patm(4000), to = calc_patm(0), length.out = df_ref$nsteps),
+                               env_var   = "patm"))
+    
+    
+    ## Doubling tibble to compare analytical vs. numerical setup
+    df_num       <- df_ana
+    df_ana$setup <- "analytical"
+    df_num$setup <- "numerical"
+    df_full      <- bind_rows(list(df_ana, df_num))
+    
+    
+    ## Running rpmodel ####
+    for (row in 1:nrow(df_full)) {
+        message('\014')
+        message("Testing environmental response... ", round(row / nrow(df_full) * 100), " %")
+        
+        if (df_full$setup[row] == "analytical") {settings$rpmodel_accl$method_optim <- "analytical"}
+        if (df_full$setup[row] == "numerical") {settings$rpmodel_accl$method_optim <- "numerical"}
+        
+        df_loop <- rpmodel(
+          
+          ## Acclimated inputs
+          tc_growth_air = df_full$tc[row],
+          tc_home       = df_full$tc_home[row],
+          vpd           = df_full$vpd[row],
+          co2           = df_full$co2[row],
+          ppfd          = df_full$ppfd[row],
+          patm          = df_full$patm[row],
+          
+          ## Local parameters
+          kphio         = settings$rpmodel_accl$kphio_calib,
+          apar_soilm    = settings$rpmodel_accl$apar_soilm_calib,
+          bpar_soilm    = settings$rpmodel_accl$bpar_soilm_calib,
+          
+          ## Calculation methods
+          method_optim   = settings$rpmodel_accl$method_optim, 
+          method_jmaxlim = settings$rpmodel_accl$method_jmaxlim,
+          method_ftemp   = settings$rpmodel_accl$method_ftemp,
+          method_eb      = settings$rpmodel_accl$method_eb
+          )
+        
+        ## Definition of rpmodel output
+        df_full$chi[row]     <- df_loop$chi
+        df_full$ci[row]      <- df_loop$ci
+        df_full$xi[row]      <- df_loop$xi
+        df_full$gs[row]      <- df_loop$gs
+        df_full$vcmax[row]   <- df_loop$vcmax
+        df_full$vcmax25[row] <- df_loop$vcmax25
+        df_full$jmax[row]    <- df_loop$jmax
+        df_full$jmax25[row]  <- df_loop$jmax25
+        df_full$kphio[row]   <- df_loop$kphio
+        df_full$a_gross[row] <- df_loop$a_gross
+        df_full$tc_growth_leaf[row]   <- df_loop$tc_growth_leaf
+        df_full$opt_convergence[row]   <- df_loop$opt_convergence
+    }
+    
+    ## Wrangling tibble for plotting
+    df_temp <- df_full %>%
+        mutate(env_var = as.factor(env_var),
+               setup = as.factor(setup),
+               setup = fct_relevel(setup, "numerical", "analytical"))
+    
+    if (remove_non_convergence) {
+        df_temp <- df_temp %>% dplyr::filter(opt_convergence == 0 | is.na(opt_convergence))
+        }
+    
+
+    ## Generating plots ####
+    ## Create empty list
+    p_all <- list()
+    
+    
+    ## Loop and append plots
+    
+    if (p_output == "per-driver") {
+        for (t in targets) {
+            
+            ## Plotting
+            p_append <- df_temp %>%
+                pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+                pivot_longer(cols = all_of(t), names_to = "targets", values_to = "targets_value") %>% 
+                dplyr::filter(targets == t,
+                              driver  == env_var) %>%
+                ggplot() +
+                aes(x = driver_value, y = targets_value, color = setup, linetype = setup) +
+                geom_vline(data = df_ref %>% pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "x"),
+                           aes(xintercept = x),
+                           alpha = 0.5, color = "grey50", linetype = "solid", size = 0.5) +
+                geom_point(size = 1.5, alpha = 0.8) +
+                xlab(paste(" ")) +
+                ylab(paste(t)) +
+                facet_wrap(~driver, ncol = 3, scales = "free_x") +
+                labs(title = paste0("Sensitivity of ", t),
+                     caption = paste0("\n Reference conditions (vertical grey lines): \n",
+                                      "tc = ", df_ref$tc, " °C",
+                                      ", tc_home = ", df_ref$tc_home, " °C",
+                                      ", vpd = ", df_ref$vpd, " Pa",
+                                      ", co2 = ", df_ref$co2, " ppm",
+                                      ", ppfd = ", df_ref$ppfd, " mol/m2/s",
+                                      ", patm = ", df_ref$patm, " Pa")) +
+                  theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+                        legend.position = c(0.825, 0.25))
+            
+            ## Fixing scales form comparison
+            if ( t == "chi")     {p_append <- p_append + ylim(0.25, 1)}
+            if ( t == "vcmax")   {p_append <- p_append + ylim(0, 6e-4)}
+            if ( t == "jmax")    {p_append <- p_append + ylim(0, 6e-4)}
+            if ( t == "gs")      {p_append <- p_append + ylim(0, 8e-6)}
+            if ( t == "a_gross") {p_append <- p_append + ylim(0, 7e-5)}
+            
+            ## Append plot to list
+            p_all[[length(p_all)+1]] <- p_append
+            }
+        }
+        
+        
+    
+    
+    ## Define output ####
+    out <- list(plot = p_all,
+                data = df_full)   
+    
+    return(out)
+}
+```
+
+
+## Function Call
+```{r}
+## Get reference inputs above
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+        for (k in 1:length(gs_v)) {
+            cost_3d[i, j, k] <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_v[k], jmax_v[j]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+        }
+    }
+}
+```
+
+## 3D Plotly
+```{r}
+## 3D Plot
+library(plotly)
+# p_v <- list()
+# 
+# for (k in 1:length(gs_v)) {
+#     p <- plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~cost_3d[,,k]) %>% add_surface()
+#     p_v <- list(p_v, p)
+# }
+
+plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~cost_3d[,,10]) %>% add_surface()
+plot_ly(x = ~vcmax_v, y = ~gs_v, z = ~cost_3d[,1,]) %>% add_surface()
+plot_ly(x = ~jmax_v, y = ~gs_v, z = ~cost_3d[1,,]) %>% add_surface()
+
+plot_ly(x = ~vcmax_v, y = ~jmax_v, z = ~gs_v, color = ~cost_3d[,,k]) %>% add_surface()
+plot_ly(z = ~cost_3d[,,1])
+
+## Dev
+### Stackoverflow
+dat <- data.frame("cat1" = sort(rep(seq(1:6), 6)),
+                  "cat2" = rep(seq(1:6), 6),
+                  "variable" = round(rnorm(36), 1),
+                  "freq" = seq(100, (100-35)))
+
+mat <- tapply(dat$freq, list(dat$cat1, dat$cat2), sum)
+mat_col <- tapply(dat$variable, list(dat$cat1, dat$cat2), sum)
+
+plot_ly(z = ~ mat, type = "surface", surfacecolor = mat_col)
+
+### 
+plot_ly(z=~mat, type="surface", surfacecolor = matrix(nrow = 6, ncol = 6, rep(1:6, each = 6)))
+
+
+```
+
+## GGPLOT 3D
+```{r}
+### When gs is fixed ...........................................................
+df_gs_fix <- tibble(vcmax=NA, jmax=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_fix, jmax_v[j]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(vcmax = vcmax_v[i], jmax = jmax_v[j], cost = cost_3d)
+            df_gs_fix <- bind_rows(df_gs_fix, row)
+    }
+}
+df_gs_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_gs_fix <- ggplot(df_gs_fix) + geom_raster(aes(x = vcmax, y = jmax, fill = cost))
+
+### When jmax is fixed .........................................................
+df_jmax_fix <- tibble(vcmax=NA, gs=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_v[i], gs_v[j], jmax_fix),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(vcmax = vcmax_v[i], gs = gs_v[j], cost = cost_3d)
+            df_jmax_fix <- bind_rows(df_jmax_fix, row)
+    }
+}
+
+df_jmax_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_jmax_fix <- ggplot(df_jmax_fix) + geom_raster(aes(x = vcmax, y = gs, fill = cost))
+
+
+### When vcmax is fixed ........................................................
+df_vcmax_fix <- tibble(jmax=NA, gs=NA, cost=NA)
+
+for (i in 1:length(vcmax_v)) {
+    for (j in 1:length(jmax_v)) {
+            cost_3d <- optimise_this_tcleaf_vcmax_jmax(
+                par        = c(vcmax_fix, gs_v[j], jmax_v[i]),
+                args       = c(tc_leaf, patm, co2, vpd),
+                iabs       = (ppfd * fapar),
+                kphio      = kphio,
+                method_jmaxlim_inst = method_jmaxlim_inst,
+                maximize   = TRUE)
+            
+            row <- tibble(jmax = jmax_v[i], gs = gs_v[j], cost = cost_3d)
+            df_vcmax_fix <- bind_rows(df_vcmax_fix, row)
+    }
+}
+
+df_vcmax_fix %<>% mutate(cost = cost/max(cost, na.rm = T))
+p_vcmax_fix <- ggplot(df_vcmax_fix) + geom_raster(aes(x = jmax, y = gs, fill = cost))
+
+p_gs_fix
+p_jmax_fix
+p_vcmax_fix
+```
+

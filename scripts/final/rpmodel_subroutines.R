@@ -1196,10 +1196,10 @@ plot_obs_vs_pred_mina <- function(df_in, unnest_var = "fit_sim") {
         ylab("Observed" ~ T[opt] ~ "[°C]") +
         scale_shape_manual(name = "Limit.", values = c(21, 23), guide = guide_legend(direction = "horizontal", title.position = "top")) +
         scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
-                           name = "Koeppen-Geiger Climate Zone",
+                           name = "Köppen-Geiger Climate Zone",
                            guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
         scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
-                          name = "Koeppen-Geiger Climate Zone",
+                          name = "Köppen-Geiger Climate Zone",
                           guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
         # labs(color = "Dataset",
         labs(title = "to be added",
@@ -1338,9 +1338,9 @@ plot_topt_vs_tgrowth <- function(df_in,
             xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
             ylab(bquote("Growth" ~ T[leaf] ~ "[°C]")) +
             scale_color_gradientn(limits = c(0, 4), colors = c("black", "skyblue1"),
-                                 name = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ P^-1 ~"]:  "))+
+                                 name = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~"]:  "))+
             # scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
-            #                   name = "Koeppen-Geiger Climate Zone",
+            #                   name = "Köppen-Geiger Climate Zone",
             #                   guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
             theme(legend.position = "bottom")
     
@@ -1440,15 +1440,15 @@ plot_two_long_df <- function(df_x,
             geom_errorbar(aes(x = x, ymin = y - se, ymax = y + se, color = climate_zone), alpha = 0.8) +
             geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 1.5, alpha = 1, shape = 21) +
             scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
-                              name = "Koeppen-Geiger Climate Zone",
+                              name = "Köppen-Geiger Climate Zone",
                               guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
             scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
-                              name = "Koeppen-Geiger Climate Zone",
+                              name = "Köppen-Geiger Climate Zone",
                               guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
             geom_smooth(aes(x = x, y = y), method = "lm", fullrange = T, color = "black") +
             geom_abline(linetype = "dotted") +
-            ylab(bquote("Observed" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
-            xlab(bquote("Predicted" ~V[vcmax] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            ylab(bquote("Observed" ~V[cmax] ~ "["~µmol ~ m^-2~s^-1~"]"))  +
+            xlab(bquote("Predicted" ~V[cmax] ~ "["~µmol ~ m^-2~s^-1~"]"))  +
             ylim(0, 200) +
             xlim(0, 200) +
             labs(title = bquote(.(model) ~ "- Limitation"),
@@ -1473,15 +1473,15 @@ plot_two_long_df <- function(df_x,
             geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 1.5, alpha = 1, shape = 21) +
             geom_smooth(method = "lm", fullrange = T, color = "black") +
             geom_abline(linetype = "dotted") +
-            ylab(bquote("Observed" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
-            xlab(bquote("Predicted" ~J[max] ~ "["~µmol ~CO[2] ~ m^-2~s^-1~"]"))  +
+            ylab(bquote("Observed" ~J[max] ~ "["~µmol ~ m^-2~s^-1~"]"))  +
+            xlab(bquote("Predicted" ~J[max] ~ "["~µmol ~ m^-2~s^-1~"]"))  +
             ylim(0, 200) +
             xlim(0, 200) +
             scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
-                              name = "Koeppen-Geiger Climate Zone",
+                              name = "Köppen-Geiger Climate Zone",
                               guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
             scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
-                               name = "Koeppen-Geiger Climate Zone",
+                               name = "Köppen-Geiger Climate Zone",
                                guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
             labs(title = bquote(.(model) ~ "- Limitation"),
                  subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | RMSE = "  ~ .(rmse) ~  " | n = "  ~ .(nrow(df_subset)))) +
@@ -1512,7 +1512,7 @@ plot_two_long_df <- function(df_x,
             xlim(0, max) +
             facet_wrap(~variable, scales = "free") +
             scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "Cfa"="#007800", "Cfb"="#005000", "Dfb"="#820082", "Dfc"="#C800C8", "ET"="#6496FF"),
-                              name = "Koeppen-Geiger Climate Zone",
+                              name = "Köppen-Geiger Climate Zone",
                               guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
             theme(legend.position = "bottom", legend.justification = "center")
         
@@ -1718,9 +1718,7 @@ rpmodel_env_response <- function(df_ref   = "no_input",
                   "patm" = bquote(P[atm] ~ "[kPa]"),
                   "kphio"= bquote(Phi ~ "[-]"))
     
-    vlabeller <- function(variable,value){
-        return(vnames[value])
-    }
+    vlabeller <- function(variable,value){return(vnames[value])}
     
     
     ## Farquhar corrections for kphio:
@@ -1893,11 +1891,13 @@ rpmodel_env_response <- function(df_ref   = "no_input",
 get_model_metrics <- function(dat = NA,
                               name = "name",
                               x = "x",
-                              y = "y") {
+                              y = "y",
+                              verbose = T) {
     
     dat$y <- dat[[y]]
     dat$x <- dat[[x]]
     
+    x_higher_y <- sum(dat$x > dat$y)
     fit  <- lm(y ~ x, data = dat)
     sry  <- summary(fit)
     coef <- sry$coefficients %>% round(2)
@@ -1912,14 +1912,1638 @@ get_model_metrics <- function(dat = NA,
     ci_b1 <- ci[2,]
     pval_b0 <- coef[1,4]
     pval_b1 <- coef[2,4]
+    intersection <- round(-b0/(b1-1), 2)
     
-    cat("\n --------------- \n", name, "\n ----------------\n b0 = ", b0, " - CI:", ci_b0, ", pval:", pval_b0 ,"\n b1 = ", b1, " - CI:", ci_b1, ", pval:", pval_b1 ,"\n adj.r2 =", r2, "\n rmse =", rmse, "\n bias =", bias, "\n ----------------"
-    )
+    if (verbose) {
+        cat("\n --------------- \n", name, "\n ----------------\n b0 = ", b0, " - CI:", ci_b0, ", pval:", pval_b0 ,"\n b1 = ", b1, " - CI:", ci_b1, ", pval:", pval_b1 ,"\n adj.r2 =", r2, "\n rmse =", rmse, "\n bias =", bias, "\n ----------------")
+    }
+    
+    out <- list(fit = fit,
+                sry = sry,
+                coef = coef,
+                rmse = rmse,
+                bias = bias,
+                r2 = r2,
+                b0   = coef[1,1],
+                b1   = coef[2,1],
+                ci   = confint(fit) %>% round(2),
+                pval_b0 = coef[1,4],
+                pval_b1 = coef[2,4],
+                intersection = intersection,
+                x_higher_y = x_higher_y)
+           
+    return(out)
 }
 
 ## .................................................................................................
-## Labeller
-vlabeller <- function(variable,value){return(vnames[value])}
+# Functions used to analyze tc_opt predictions ####
+## .................................................................................................
+plot_analytical_both_light_forcings <- function(all_inst_smith_growth_with_eb,
+                                                all_inst_smith_meas_with_eb,
+                                                all_inst_farq_growth_with_eb,
+                                                all_inst_farq_meas_with_eb) {
+    
+    df_all_tcopt_tcgrowth <- bind_rows(list(all_inst_smith_growth_with_eb$df_all %>% dplyr::filter(eb_model == "analytical"),
+                                            all_inst_farq_growth_with_eb$df_all %>% dplyr::filter(eb_model == "analytical"))) %>% 
+        mutate(smith_or_farq = as.factor(smith_or_farq)) %>% 
+        unnest(c("forcing", "rpm_accl", "fit_sim"))
+    
+    y <- "tc_opt_sim"
+    
+    forcing    <- df_all_tcopt_tcgrowth$ppfd_growth_or_meas
+    
+    ## .................................................................................................
+    ## METRICS
+    metrics_low <- list(smith = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(smith_or_farq == "smith37"), name = "Smith", x = "tc_growth_air", y = y, verbose = F),
+                        farq = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(smith_or_farq == "farquhar89"),   name = "Farquhar", x = "tc_growth_air", y = y, verbose = F))
+    
+    ## .................................................................................................
+    ## Plotting
+    
+    ## Labeller:
+    vnames    <-list("smith37" = "Smith-Formulation", "farquhar89"  = "Farquhar-Formulation")
+    vlabeller <- function(variable,value){return(vnames[value])}
+    
+    
+    p_low <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+        # mutate(tc_growth = ifelse(eb_model == "none" & condition == "tc_growth_leaf", -tc_growth, tc_growth)) %>% 
+        # ggplot(aes(x = tc_growth_leaf, y = eval(parse(text = y)), fill = tc_growth_type, shape = tc_growth_type, color = tc_growth_type)) +
+        ggplot() +
+        geom_point(aes(tc_growth_air, tc_opt_sim), alpha = 1, size = 1.5, fill = "skyblue3", pch = 21) +
+        facet_wrap(~smith_or_farq, labeller = vlabeller) +
+        # scale_color_manual(name  = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c("skyblue3", "darkgreen")) +
+        # scale_fill_manual( name  = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend( direction = "horizontal", title.position = "left"), values = c("skyblue3", "darkgreen")) +
+        # scale_shape_manual( name = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c(16, 16)) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..eq.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 1, parse = TRUE, coef.digits = 2) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..rr.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 2, parse = TRUE, coef.digits = 2) +
+        geom_abline(linetype = "dotted") +
+        geom_smooth(aes(tc_growth_air, tc_opt_sim), color = "skyblue3", method = "lm", fullrange = T, alpha = 0.5, se = T) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
+        ylab(bquote("Simulated" ~ T[opt] ~ "[°C]")) +
+        labs(subtitle = "Low light forcing") +
+        theme(legend.position = "bottom")
+    
+    ## .................................................................................................
+    ## .................................................................................................
+    ## HIGH LIGHT 
+    
+    df_all_tcopt_tcgrowth <- bind_rows(list(all_inst_smith_meas_with_eb$df_all %>% dplyr::filter(eb_model == "analytical"),
+                                            all_inst_farq_meas_with_eb$df_all %>% dplyr::filter(eb_model == "analytical"))) %>% 
+        mutate(smith_or_farq = as.factor(smith_or_farq)) %>% 
+        unnest(c("forcing", "rpm_accl", "fit_sim"))
+    
+    y <- "tc_opt_sim"
+    
+    forcing    <- df_all_tcopt_tcgrowth$ppfd_growth_or_meas
+    
+    ## .................................................................................................
+    ## METRICS
+    metrics_high <- list(smith = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(smith_or_farq == "smith37"), name = "Smith", x = "tc_growth_air", y = y, verbose = F),
+                         farq = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(smith_or_farq == "farquhar89"),   name = "Farquhar", x = "tc_growth_air", y = y, verbose = F))
+    
+    ## .................................................................................................
+    ## Plotting
+    
+    ## Labeller:
+    vnames    <-list("smith37" = "Smith-Formulation", "farquhar89"  = "Farquhar-Formulation")
+    vlabeller <- function(variable,value){return(vnames[value])}
+    
+    
+    p_high <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+        # mutate(tc_growth = ifelse(eb_model == "none" & condition == "tc_growth_leaf", -tc_growth, tc_growth)) %>% 
+        # ggplot(aes(x = tc_growth_leaf, y = eval(parse(text = y)), fill = tc_growth_type, shape = tc_growth_type, color = tc_growth_type)) +
+        ggplot() +
+        geom_point(aes(tc_growth_air, tc_opt_sim), alpha = 1, size = 1.5, fill = "skyblue3", pch = 21) +
+        facet_wrap(~smith_or_farq, labeller = vlabeller) +
+        # scale_color_manual(name  = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c("skyblue3", "darkgreen")) +
+        # scale_fill_manual( name  = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend( direction = "horizontal", title.position = "left"), values = c("skyblue3", "darkgreen")) +
+        # scale_shape_manual( name = "Temperature level for input: ", labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c(16, 16)) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..eq.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 1, parse = TRUE, coef.digits = 2) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..rr.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 2, parse = TRUE, coef.digits = 2) +
+        geom_abline(linetype = "dotted") +
+        geom_smooth(aes(tc_growth_air, tc_opt_sim), color = "skyblue3", method = "lm", fullrange = T, alpha = 0.5, se = T) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
+        ylab(bquote("Simulated" ~ T[opt] ~ "[°C]")) +
+        labs(subtitle = "High light forcing") +
+        # ggtitle(bquote("Comparison of growth" ~ T[air] ~ "to simulated" ~ T[opt] ~ "under high light forcing")) +
+        theme(legend.position = "bottom")
+    
+    return(list(p_high = p_high, p_low = p_low, metrics_high, metrics_low))
+}
+
+## .................................................................................................
+plot_topt_tgrowth <- function(df_in = F, y = NA, forcing = "growth", limitation = "smith37"){
+    
+    if (is.na(y)) stop("> Provide y value tc_opt_obs or tc_opt_sim")
+    
+    if (length(df_in) == 1) {
+        
+        ## .................................................................................................
+        ## SETUP
+        settings <- get_settings()
+        settings$rpmodel_accl$method_optim <- "numerical"
+        settings$rpmodel_accl$method_jmaxlim <- limitation
+        settings$rpmodel_inst$method_jmaxlim <- settings$rpmodel_accl$method_jmaxlim
+        settings$rpmodel_exp$ppfd <- forcing
+        
+        ## .................................................................................................
+        ## MODEL RUNS
+        df_eb_reference <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+        
+        ## Using plantecophys EB:
+        settings$rpmodel_accl$method_eb    <- "plantecophys"
+        df_pl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+        
+        ## Using tealeaves EB:
+        settings$rpmodel_accl$method_eb    <- "tealeaves"
+        df_tl <- run_accl_to_sim(settings, df_drivers_k19, df_evaluation_k19) %>% unnest(metainfo) %>%  dplyr::filter(str_detect(plant_env, "MNE"))
+        
+        ## Gather dfs into one
+        df_eb_reference$eb_model <- "none"
+        df_pl$eb_model <- "plantecophys"
+        df_tl$eb_model <- "tealeaves"
+        
+        df_all_tcopt_tcgrowth <- bind_rows(list(df_eb_reference, df_pl, df_tl)) %>% 
+            mutate(eb_model = as.factor(eb_model)) %>%
+            unnest(c("fit_sim", "forcing", "rpm_accl"))
+        
+    } else {
+        df_all_tcopt_tcgrowth <- df_in %>% 
+            dplyr::filter(eb_model != "analytical") %>%
+            unnest(c("forcing", "rpm_accl", "fit_sim")) %>% 
+            mutate(eb_model = ifelse(eb_model == "numerical", paste("none"), paste(eb_model)))
+        
+        limitation <- df_in$smith_or_farq
+        forcing    <- df_in$ppfd_growth_or_meas
+    }
+    
+    df_all_tcopt_tcgrowth$tc_growth_type <- ifelse(df_all_tcopt_tcgrowth$eb_model == "none", "air", "leaf")
+    
+    ## .................................................................................................
+    ## METRICS
+    metrics <- list(no_eb = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(eb_model == "none"), name = "none", x = "tc_growth_leaf", y = y, verbose = F),
+                    pla = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(eb_model == "plantecophys"),   name = "plantecophys", x = "tc_growth_leaf", y = y, verbose = F),
+                    tea = get_model_metrics(df_all_tcopt_tcgrowth %>% dplyr::filter(eb_model == "tealeaves"),   name = "tealeaves", x = "tc_growth_leaf", y = y, verbose = F))
+    
+    ## .................................................................................................
+    ## Plotting
+    vlabeller <- function(variable,value){return(vnames[value])}
+    
+    if (limitation == "smith37" && forcing == "metainfo") title <- "Effect of energy balance under high light conditions | Smith-Formulation"
+    if (limitation == "farquhar89" && forcing == "metainfo") title <- "Effect of energy balance under high light conditions | Farquhar-Formulation"
+    if (limitation == "smith37" && forcing == "growth") title <- "Effect of energy balance under daily mean light conditions | Smith-Formulation"
+    if (limitation == "farquhar89" && forcing == "growth") title <- "Effect of energy balance under daily mean light conditions | Farquhar-Formulation"
+    
+    if(y == "tc_opt_obs") {
+        vnames    <- list("none" = "observations only", "plantecophys"  = "plantecophys model", "tealeaves"  = "tealeaves model")
+        legend    <- bquote("Growth temperature: ")
+        
+    } else if (y == "tc_opt_sim") {
+        vnames    <- list("none" = "no energy balance", "plantecophys"  = "plantecophys model", "tealeaves"  = "tealeaves model")
+        legend    <- bquote("Growth temperature used to calculate" ~ T[opt]*": ")
+    }
+    
+    p_opt_gro <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") %>% 
+        # mutate(tc_growth = ifelse(eb_model == "none" & condition == "tc_growth_leaf", -tc_growth, tc_growth)) %>% 
+        ggplot() +
+        geom_point(aes(x = tc_growth_leaf, y = eval(parse(text = y)), fill = tc_growth_type, shape = tc_growth_type), alpha = 1, size = 2, pch = 21) +
+        facet_wrap(~eb_model, labeller = vlabeller) +
+        scale_color_manual(name  = legend, labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c("skyblue3", "darkgreen")) +
+        scale_fill_manual( name  = legend, labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend( direction = "horizontal", title.position = "left"), values = c("skyblue3", "darkgreen")) +
+        scale_shape_manual( name = legend, labels = c("air" = "air", "leaf" = "leaf"), guide = guide_legend(direction = "horizontal", title.position  = "left"), values = c(16, 16)) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..eq.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 1, parse = TRUE, coef.digits = 2) +
+        ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = tc_growth_leaf, y = eval(parse(text = y)), label = paste(..rr.label.., sep = "~~")), inherit.aes = F, color = "black", vjust = 2, parse = TRUE, coef.digits = 2) +
+        geom_abline(linetype = "dotted") +
+        geom_smooth(aes(x = tc_growth_leaf, y = eval(parse(text = y)), fill = tc_growth_type, color = tc_growth_type), method = "lm", fullrange = T, alpha = 0.5, se = T) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote("Growth temperature [°C]")) +
+        theme(legend.position = "bottom")
+    
+    if(y == "tc_opt_obs") {
+        p_opt_gro <- p_opt_gro + ylab(bquote("Observed" ~ T[opt] ~ "[°C]")) + ggtitle(bquote("Observed" ~ T[opt] ~ "compared of growth temperature"))
+        
+    } else if (y == "tc_opt_sim") {
+        p_opt_gro <- p_opt_gro + ylab(bquote("Simulated" ~ T[opt] ~ "[°C]")) + ggtitle(bquote("Simulated" ~ T[opt] ~ "compared of growth temperature"))
+    }
+    
+    ## .................................................................................................
+    vnames    <- list("none" = "no energy balance", "plantecophys"  = "plantecophys model", "tealeaves"  = "tealeaves model")
+    
+    p_air_lea <- df_all_tcopt_tcgrowth %>% 
+        # pivot_longer(cols = c(tc_growth_leaf, tc_growth_air), names_to = "condition", values_to = "tc_growth") +
+        ggplot() + 
+        geom_abline(linetype = "dotted") +
+        geom_point(alpha = 1, size = 2.75, shape = 16, aes(y = tc_growth_leaf, x = tc_growth_air, color = gs*10^6)) +
+        geom_smooth(aes(y = tc_growth_leaf, x = tc_growth_air), color = "red", fullrange=T, alpha = 0.25, se = F, size = 0.5) +
+        facet_wrap(~eb_model, labeller = vlabeller) +
+        xlim(0, 40) +
+        ylim(0, 40) +
+        xlab(bquote("Growth" ~ T[air] ~ "[°C]")) +
+        ylab(bquote("Growth" ~ T[leaf] ~ "[°C]")) +
+        # guides(color = guide_legend(title.position = "top")) +
+        labs(color = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~"]:  "),
+             title = "\n \n Uncoupling of leaf and air temperatures") +
+        theme(legend.position = "bottom")
+    
+    p_air_lea <- p_air_lea + scale_color_continuous(low = "black", high = "gold", limits=c(0, 6), breaks = c(0, 2, 4, 6))
+    
+    # if (forcing == "metainfo") {p_air_lea <- p_air_lea + scale_color_continuous(low = "black", high = "gold", limits=c(0, 6), breaks = c(0, 2, 4, 6))}
+    # if (forcing == "growth")   {p_air_lea <- p_air_lea + scale_color_continuous(low = "black", high = "gold", limits=c(0, 3), breaks = c(0, 1, 2, 3))}
+    
+    (p <- p_air_lea / p_opt_gro +
+            # plot_layout(guides = "collect") &
+            # plot_annotation(title = paste(title)) &
+            theme(legend.position = "bottom"))
+    
+    # ggsave(paste0("~/projects/mscthesis/docs/fig-energybalance-", limitation, "-", forcing, "-",y ,".pdf"), p, height = 6, width = 8)
+    
+    out <- list(df_all = df_all_tcopt_tcgrowth,
+                p_p_opt_gro = p_opt_gro,
+                p_air_lea = p_air_lea,
+                p_all = p,
+                metrics = metrics)
+    
+    return(out)
+}
+
+## .................................................................................................
+run_topt_models <- function(smith_or_farq = "smith37",
+                            ppfd_growth_or_meas = "metainfo",
+                            with_eb_models = F,
+                            settings_in = F,
+                            df_drivers_k19,
+                            df_evaluation_k19){
+    ## .................................................................................................
+    ## SETUP
+    if (!settings_in) {
+        settings    <- get_settings()
+        settings$rpmodel_accl$method_jmaxlim <- smith_or_farq
+        settings$rpmodel_inst$method_jmaxlim <- smith_or_farq
+        settings$rpmodel_exp$ppfd <- ppfd_growth_or_meas
+    }
+    
+    title <- ifelse(smith_or_farq == "smith37", "Smith-Formulation", "Farquhar-Formulation")
+    
+    ## .................................................................................................
+    ## MODEL RUNS
+    ## Analytical
+    df_accl_ana <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>%
+        sim_rpmodel(., settings) %>%
+        extract_tc_opt_sim(.) %>%
+        unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+    
+    p_inst_ana  <- df_accl_ana %>% 
+        plot_obs_vs_pred_mina(.) 
+    
+    ## Numerical w/o eb
+    settings$rpmodel_accl$method_optim   <- "numerical"
+    df_accl_num <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>%
+        sim_rpmodel(., settings) %>%
+        extract_tc_opt_sim(.) %>%
+        unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+    
+    p_inst_num <- df_accl_num %>% 
+        plot_obs_vs_pred_mina(.) 
+    
+    if (with_eb_models) {
+        
+        ## Numerical w/ tealeaves
+        settings$rpmodel_accl$method_eb      <- "plantecophys"
+        df_accl_num_pl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>%
+            sim_rpmodel(., settings) %>%
+            extract_tc_opt_sim(.) %>%
+            unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+        
+        p_inst_num_pl <- df_accl_num_pl %>% 
+            plot_obs_vs_pred_mina(.) 
+        
+        ## Numerical w/ plantecophys
+        settings$rpmodel_accl$method_eb      <- "tealeaves"
+        df_accl_num_tl <- run_rpmodel_accl(settings = settings, df_drivers = df_drivers_k19, df_evaluation = df_evaluation_k19) %>%
+            sim_rpmodel(., settings) %>%
+            extract_tc_opt_sim(.) %>%
+            unnest(metainfo) %>% dplyr::filter(str_detect(plant_env, "MNE")) 
+        
+        p_inst_num_tl <- df_accl_num_tl %>% 
+            plot_obs_vs_pred_mina(.) 
+        
+        ## .................................................................................................
+        ## Gather dfs into one
+        df_accl_ana$eb_model <- "analytical"
+        df_accl_num$eb_model <- "numerical"
+        df_accl_num_pl$eb_model <- "plantecophys"
+        df_accl_num_tl$eb_model <- "tealeaves"
+        
+        df_all_topt <- bind_rows(list(df_accl_ana, df_accl_num, df_accl_num_pl, df_accl_num_tl)) %>%
+            mutate(eb_model = as.factor(eb_model),
+                   smith_or_farq = as.factor(smith_or_farq),
+                   ppfd_growth_or_meas = as.factor(ppfd_growth_or_meas))
+        
+        ## .................................................................................................
+        ## PLOTS
+        # p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
+        p2 <- p_inst_ana$plot    + ggtitle("Analytical P-Model")  + labs(caption = NULL) + xlab("") 
+        p3 <- p_inst_num$plot    + ggtitle("Numerical P-Model")  + labs(caption = NULL) + xlab("") + ylab("")
+        p4 <- p_inst_num_pl$plot + ggtitle("Numerical + plantecophys") + labs(caption = NULL)
+        p5 <- p_inst_num_tl$plot + ggtitle("Numerical + tealeaves")    + labs(caption = NULL) + ylab("")
+        
+        # p1 + p2 + p3 + guide_area() + plot_layout(guides = "collect") # prescribed - analytical - numerical
+        p <- p2 + p3 + p4 + p5 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = title)
+        
+        ## .................................................................................................
+        ## SAVE AND RETURN
+        out <- list(df_all = df_all_topt,
+                    ana = p_inst_ana,
+                    num = p_inst_num,
+                    pla = p_inst_num_pl,
+                    tea = p_inst_num_tl,
+                    p_all = p,
+                    smith_or_farq = smith_or_farq,
+                    ppfd_growth_or_meas = ppfd_growth_or_meas)
+        
+        ggsave(paste0("~/projects/mscthesis/docs/fig-comparison-topt-num-ana-", smith_or_farq, "-", settings$rpmodel_exp$ppfd, ".pdf"), p, height = 7, width = 8)
+        saveRDS(out, paste0("~/projects/mscthesis/docs/df-topt-simulations-", smith_or_farq, "-", settings$rpmodel_exp$ppfd, ".rds"))
+        
+        return(out)
+        
+    } else {
+        ## .................................................................................................
+        ## Without EB Models:
+        # p1 <- p_inst_fix$plot + ggtitle("Prescribed Vcmax25") + labs(caption = NULL)
+        p2 <- p_inst_ana$plot    + ggtitle("Analytical P-Model")  + labs(caption = NULL)
+        p3 <- p_inst_num$plot    + ggtitle("Numerical P-Model")  + labs(caption = NULL) + xlab("")
+        
+        p <- p2 + p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = title)
+        
+        ## RETURN
+        out <- list(ana = p_inst_ana,
+                    num = p_inst_num,
+                    p_all = p,
+                    smith_or_farq = smith_or_farq,
+                    ppfd_growth_or_meas = ppfd_growth_or_meas)
+        return(out)
+    }
+}
+
+## .................................................................................................
+sens_tc_growth <- function(variables) {
+    
+    #### Setup
+    df_ref <- get_df_ref()
+    # v_ppfd <- c(250, 500, 1000, 1500, 2000)*10^-6
+    v_tcgrowth <- c(5, 10, 15, 20, 25, 30, 35, 40)
+    vlabeller <- function(variable,value){return(vnames[value])}
+    vnames <-list("ac" = "Ac", "aj_smith"  = "Aj (Smith)", "aj_farq"  = "Aj (Farquhar)")
+    
+    df_tib <- tibble(
+        tc_air = seq(0, 40, length.out = df_ref$nsteps),
+        tc_growth   = rep(NA, df_ref$nsteps),
+        limitation   = rep(NA, df_ref$nsteps),
+        ac     = rep(NA, df_ref$nsteps),
+        aj = rep(NA, df_ref$nsteps),
+        a_lim  = rep(NA, df_ref$nsteps),
+        lim    = rep(NA, df_ref$nsteps),
+        rd     = rep(NA, df_ref$nsteps),
+        vcmax25 = rep(NA, df_ref$nsteps),
+        jmax25 = rep(NA, df_ref$nsteps)
+    )
+    
+    #### Loop
+    # df_ref$ppfd <- 1500 * 10^-6
+    # df_ref$tc_home <- 5
+    # df_ref$tc_growth <- 5
+    
+    df_out_tcgrowth <- tibble()
+    
+    for (limitation in c("smith37", "farquhar89")) {
+        df_loop <- df_tib
+        df_loop$limitation <- limitation
+        
+        for (p in v_tcgrowth) {
+            
+            ## Get acclimated variables:
+            df_loop$tc_growth <- p
+            
+            out <- rpmodel(tc_growth_air = p, # Looped variable
+                           method_jmaxlim = limitation, 
+                           ppfd = df_ref$ppfd, kphio = df_ref$kphio, tc_home = df_ref$tc_home, vpd = df_ref$vpd, co2 = df_ref$co2, fapar = 1, patm = df_ref$patm, # Forcings
+                           beta = 146.0, soilm = stopifnot(!do_soilmstress), meanalpha = 1.0, apar_soilm = 0.0, bpar_soilm = 0.73300, c4 = FALSE, soilmstress = 1, # Local parameters
+                           method_optim   = "analytical", method_optci   = "prentice14", method_ftemp   = "kumarathunge19", method_eb      = "off", # Calculation methods
+                           do_ftemp_kphio = TRUE, do_ftemp_theta = F, do_soilmstress = FALSE, returnvar = NULL, verbose = F # Other settings
+            )
+            
+            df_loop$jmax25  <- out$jmax25
+            df_loop$vcmax25 <- out$vcmax25
+            df_loop$kphio   <- out$kphio
+            
+            for (i in 1:nrow(df_tib)) {
+                ## Get instantaneous reaction:
+                
+                ## Get temperature dependent variables:
+                gammastar <- calc_gammastar(df_loop$tc_air[i], df_ref$patm)
+                kmm       <- calc_kmm(df_loop$tc_air[i], df_ref$patm)
+                vcmax     <- df_loop$vcmax25[i] * calc_ftemp_inst_vcmax(df_loop$tc_air[i], tcgrowth = df_loop$tc_growth[i])
+                jmax      <- df_loop$jmax25[i]  * calc_ftemp_inst_jmax(df_loop$tc_air[i],  tcgrowth = df_loop$tc_growth[i], tchome = df_ref$tc_home)
+                
+                ci <- calc_ci(ca = df_ref$co2/10, gammastar = gammastar, xi = out$xi, vpd = df_ref$vpd, df_ref$patm)
+                
+                ## Rd
+                df_loop$rd[i] <- calc_rd(df_loop$tc_air[i], vcmax = df_loop$vcmax25[i])
+                
+                ## Agross:
+                df_loop$ac[i] <- calc_ac(ci = ci, gammastar = gammastar, kmm = kmm, vcmax = vcmax)$ac
+                df_loop$aj[i]    <- calc_aj(j_method = df_loop$limitation[i], kphio = df_loop$kphio[i], jmax = jmax, ppfd = df_ref$ppfd, ci = ci, fapar = 1, gammastar = gammastar, theta = 0.85)$aj
+                df_loop$a_lim[i] <- min(df_loop$ac[i], df_loop$aj[i])
+                
+                # ## Anet:
+                # df_loop$ac[i]    <- df_loop$ac[i]  - df_loop$rd[i]
+                # df_loop$aj[i]    <- df_loop$aj[i]  - df_loop$rd[i]
+                # df_loop$a_lim[i] <- min(df_loop$ac[i], df_loop$aj[i])
+                
+                ## Define limiting rate
+                if (df_loop$a_lim[i] == df_loop$ac[i]) df_loop$lim[i]   <- "ac"
+                if (df_loop$a_lim[i] == df_loop$aj[i]) df_loop$lim[i]   <- "aj"
+            }
+            
+            df_out_tcgrowth <- bind_rows(list(df_out_tcgrowth, df_loop))
+        }
+    }
+    
+    ## .................................................................................................
+    #### PLOTS
+    vnames <-list("ac" = "Ac", "aj"  = "Aj")
+    
+    #### FARQUHAR
+    df_farq <- df_out_tcgrowth %>% dplyr::filter(limitation == "farquhar89")
+    df_smith <- df_out_tcgrowth %>% dplyr::filter(limitation == "smith37")
+    
+    maximum <- max(df_farq$aj, df_farq$ac, df_smith$aj, df_smith$ac)
+    
+    df_plot_farq <- df_farq %>%
+        pivot_longer(cols = c(ac, aj), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum,
+               # a     = a*10^6,
+               tc_growth  = as.factor(tc_growth))
+    
+    
+    p_farq <- df_plot_farq %>% ggplot() +
+        aes(tc_air, a, color = tc_growth, group = tc_growth) +
+        geom_line(alpha = 1, size = 1) +
+        facet_wrap(~rate, labeller = vlabeller) +
+        scale_color_viridis_d(name = bquote(T[growth] ~ "[°C]: ")) +
+        guides(color = guide_legend(ncol = 4, direction = "horizontal")) +
+        ylab("Scaled rate [-]") + # ylab(bquote("Rate [µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+        xlab("Temperature [°C]") +
+        theme(legend.position = "bottom") +
+        ggtitle(bquote("Farquhar - Formulation")) +
+        ylim(0,1)
+    
+    
+    #### SMITH
+    
+    df_plot_smith <- df_smith %>%
+        pivot_longer(cols = c(ac, aj), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum,
+               # a     = a*10^6,
+               tc_growth  = as.factor(tc_growth))
+    
+    
+    p_smith <- df_plot_smith %>% ggplot() +
+        aes(tc_air, a, color = tc_growth, group = tc_growth) +
+        geom_line(alpha = 1, size = 1) +
+        facet_wrap(~rate, labeller = vlabeller) +
+        scale_color_viridis_d(name = bquote(T[growth] ~ "[°C]: ")) +
+        guides(color = guide_legend(ncol = 4, direction = "horizontal")) +
+        ylab("Scaled rate [-]") + # ylab(bquote("Rate [µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+        xlab("Temperature [°C]") +
+        xlab("") +
+        theme(legend.position = "bottom") +
+        ggtitle(bquote("Smith-Formulation")) +
+        ylim(0,1)
+    
+    
+    (p_both <- p_smith / p_farq +
+            plot_layout(guides = "collect") &
+            plot_annotation(title = "Sensitivity of gross assimilation rates to growth temperature conditions") &
+            theme(legend.position = "bottom"))
+    
+    return(p_both)
+}
+
+## .................................................................................................
+sens_growth_ppfd <- function() {
+    df_ref <- get_df_ref()
+    # v_ppfd <- c(250, 500, 1000, 1500, 2000)*10^-6
+    v_ppfd <- c(250, 500, 750,  1000, 1250, 1500)*10^-6
+    vlabeller <- function(variable,value){return(vnames[value])}
+    vnames <-list("ac" = "Ac", "aj_smith"  = "Aj (Smith)", "aj_farq"  = "Aj (Farquhar)")
+    
+    df_tib <- tibble(
+        tc_air = seq(0, 40, length.out = df_ref$nsteps),
+        ppfd   = rep(NA, df_ref$nsteps),
+        limitation   = rep(NA, df_ref$nsteps),
+        ac     = rep(NA, df_ref$nsteps),
+        aj = rep(NA, df_ref$nsteps),
+        a_lim  = rep(NA, df_ref$nsteps),
+        lim    = rep(NA, df_ref$nsteps),
+        rd     = rep(NA, df_ref$nsteps),
+        vcmax25 = rep(NA, df_ref$nsteps),
+        jmax25 = rep(NA, df_ref$nsteps)
+    )
+    
+    ### Loop
+    ## GROWTH PPFD:
+    # df_ref$ppfd <- 1500 * 10^-6
+    # df_ref$tc_home <- 15
+    # df_ref$tc_growth <- 15
+    
+    df_out_ppfd <- tibble()
+    
+    for (limitation in c("smith37", "farquhar89")) {
+        df_loop <- df_tib
+        df_loop$limitation <- limitation
+        
+        for (p in v_ppfd) {
+            
+            ## Get acclimated variables:
+            df_loop$ppfd <- p
+            
+            out <- rpmodel(ppfd = p, # Looped variable
+                           method_jmaxlim = limitation, 
+                           tc_growth_air = df_ref$tc_growth, tc_home = df_ref$tc_home, vpd = df_ref$vpd, co2 = df_ref$co2, fapar = 1, patm = df_ref$patm, # Forcings
+                           kphio = df_ref$kphio, beta = 146.0, soilm = stopifnot(!do_soilmstress), meanalpha = 1.0, apar_soilm = 0.0, bpar_soilm = 0.73300, c4 = FALSE, soilmstress = 1, # Local parameters
+                           method_optim   = "analytical", method_optci   = "prentice14", method_ftemp   = "kumarathunge19", method_eb      = "off", # Calculation methods
+                           do_ftemp_kphio = TRUE, do_ftemp_theta = F, do_soilmstress = FALSE, returnvar = NULL, verbose = FALSE # Other settings
+            )
+            
+            df_loop$jmax25  <- out$jmax25
+            df_loop$vcmax25 <- out$vcmax25
+            df_loop$kphio   <- out$kphio
+            
+            for (i in 1:nrow(df_tib)) {
+                ## Get instantaneous reaction:
+                
+                ## Get temperature dependent variables:
+                gammastar <- calc_gammastar(df_loop$tc_air[i], df_ref$patm)
+                kmm <- calc_kmm(df_loop$tc_air[i], df_ref$patm)
+                vcmax <- df_loop$vcmax25[i] * calc_ftemp_inst_vcmax(df_loop$tc_air[i], tcgrowth = df_ref$tc_growth)
+                jmax <-  df_loop$jmax25[i] * calc_ftemp_inst_jmax(df_loop$tc_air[i], tcgrowth = df_ref$tc_growth, tchome = df_ref$tc_home)
+                
+                
+                ## Rd
+                df_loop$rd[i] <- calc_rd(df_loop$tc_air[i], vcmax = df_loop$vcmax25[i])
+                
+                ## Agross:
+                df_loop$ac[i]    <- calc_ac(ci = df_ref$ci/10, gammastar = gammastar, kmm = kmm, vcmax = vcmax)$ac
+                df_loop$aj[i]    <- calc_aj(j_method = df_loop$limitation[i], kphio = df_loop$kphio[i], jmax = jmax, ppfd = df_ref$ppfd, ci = df_ref$ci/10, fapar = 1, gammastar = gammastar, theta = 0.85)$aj
+                df_loop$a_lim[i] <- min(df_loop$ac[i], df_loop$aj[i])
+                
+                # ## Anet:
+                # df_loop$ac[i]  <- df_loop$ac[i]  - df_loop$rd[i]
+                # df_loop$aj[i]  <- df_loop$aj[i]  - df_loop$rd[i]
+                # df_loop$a_lim[i] <- min(df_loop$ac[i], df_loop$aj[i])
+                
+                ## Define limiting rate
+                if (df_loop$a_lim[i] == df_loop$ac[i]) df_loop$lim[i]   <- "ac"
+                if (df_loop$a_lim[i] == df_loop$aj[i]) df_loop$lim[i]   <- "aj"
+            }
+            
+            df_out_ppfd <- bind_rows(list(df_out_ppfd, df_loop))
+        }
+    }
+    
+    ## .................................................................................................
+    ### PLOTS
+    vnames <-list("ac" = "Ac", "aj"  = "Aj")
+    
+    #### FARQUHAR
+    df_smith <- df_out_ppfd %>% dplyr::filter(limitation == "smith37")
+    df_farq <-  df_out_ppfd %>% dplyr::filter(limitation == "farquhar89")
+    
+    maximum <- max(df_smith$aj, df_smith$ac, df_farq$aj, df_farq$ac)
+    
+    df_plot_farq <- df_farq %>%
+        pivot_longer(cols = c(ac, aj), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum,
+               # a     = a*10^6,
+               ppfd  = as.factor(ppfd*10^6))
+    
+    
+    p_farq <- df_plot_farq %>% ggplot() +
+        aes(tc_air, a, color = ppfd, group = ppfd) +
+        geom_line(alpha = 1, size = 1) +
+        facet_wrap(~rate, labeller = vlabeller) +
+        scale_color_viridis_d(name = bquote("Growth PPFD [µmol" ~ m^-2 ~ s ^-1 ~ "]:  ")) +
+        guides(color = guide_legend(ncol = 4, direction = "horizontal")) +
+        ylab("Scaled rate [-]") + # ylab(bquote("Rate [µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+        xlab("Temperature [°C]") +
+        theme(legend.position = "bottom") +
+        ggtitle(bquote("Farquhar - Formulation")) +
+        ylim(0,1)
+    
+    
+    #### SMITH
+    
+    df_plot_smith <- df_smith %>%
+        pivot_longer(cols = c(ac, aj), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum,
+               # a     = a*10^6,
+               ppfd  = as.factor(ppfd*10^6))
+    
+    
+    p_smith <- df_plot_smith %>% ggplot() +
+        aes(tc_air, a, color = ppfd, group = ppfd) +
+        geom_line(alpha = 1, size = 1) +
+        facet_wrap(~rate, labeller = vlabeller) +
+        scale_color_viridis_d(name = bquote("Growth PPFD [µmol" ~ m^-2 ~ s ^-1 ~ "]:  ")) +
+        guides(color = guide_legend(ncol = 4, direction = "horizontal")) +
+        ylab("Scaled rate [-]") + # ylab(bquote("Rate [µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+        xlab("Temperature [°C]") +
+        xlab("") +
+        theme(legend.position = "bottom") +
+        ggtitle(bquote("Smith-Formulation")) +
+        ylim(0,1)
+    
+    
+    (p_both <- p_smith / p_farq +
+            plot_layout(guides = "collect") &
+            plot_annotation(title = "Sensitivity of gross assimilation rates to growth light conditions") &
+            theme(legend.position = "bottom"))
+    
+    return(p_both)
+}
+
+## .................................................................................................
+sens_acc_jmax <- function() {
+    
+    ## Aj Sensitivities
+    
+    ### Setup
+    df_ref <- get_df_ref()
+    v_ppfd <- c(250, 500, 1000, 1500, 2000)*10^-6
+    v_acc_jmax <- c(25, 50, 75, 100, 150, 200)*10^-6
+    v_vcmax25 <- c(25, 50, 75, 100, 150, 200)*10^-6
+    
+    df_tib <- tibble(
+        tc_air = seq(0, 40, length.out = df_ref$nsteps),
+        ppfd   = rep(NA, df_ref$nsteps),
+        jmax_acc   = rep(NA, df_ref$nsteps),
+        ac     = rep(NA, df_ref$nsteps),
+        aj_farq = rep(NA, df_ref$nsteps),
+        aj_smith = rep(NA, df_ref$nsteps),
+        a_lim  = rep(NA, df_ref$nsteps),
+        lim    = rep(NA, df_ref$nsteps),
+        rd     = rep(NA, df_ref$nsteps)
+    )
+    
+    ## Labeller:
+    vlabeller <- function(variable,value){return(vnames[value])}
+    vnames <-list("ac" = "Ac", "aj_smith"  = "Aj (Smith)", "aj_farq"  = "Aj (Farquhar)")
+    
+    df_out_jmax <- tibble()
+    
+    for (j in v_acc_jmax) {
+        df_loop <- df_tib
+        df_loop$jmax_acc <- j
+        
+        for (i in 1:nrow(df_tib)) {
+            ## Get temperature dependent variables:
+            gammastar <- calc_gammastar(df_loop$tc_air[i], df_ref$patm)
+            kmm       <- calc_kmm(df_loop$tc_air[i], df_ref$patm)
+            vcmax     <- df_ref$vcmax_start * calc_ftemp_inst_vcmax(df_loop$tc_air[i], tcgrowth = df_ref$tc_growth)
+            jmax_25   <- df_loop$jmax_acc[i] / calc_ftemp_inst_jmax(df_ref$tc_growth, tcgrowth = df_ref$tc_growth, tchome = df_ref$tc_home)
+            jmax      <- jmax_25 * calc_ftemp_inst_jmax(df_loop$tc_air[i], tcgrowth = df_ref$tc_growth, tchome = df_ref$tc_home)
+            
+            ## Rd
+            df_loop$rd[i]       <- calc_rd(df_loop$tc_air[i], vcmax = df_ref$vcmax_start)
+            
+            kphio <- df_ref$kphio * calc_ftemp_kphio(df_ref$tc_growth)
+            
+            ## Agross:
+            df_loop$ac[i]       <- calc_ac(ci = df_ref$ci/10, gammastar = gammastar, kmm = kmm, vcmax = vcmax)$ac
+            df_loop$aj_farq[i]  <- calc_aj(j_method = "farquhar89", kphio = kphio*4, jmax = jmax, ppfd = df_ref$ppfd, ci = df_ref$ci/10, fapar = 1, gammastar = gammastar)$aj
+            df_loop$aj_smith[i] <- calc_aj(j_method = "smith37", kphio = kphio, jmax = jmax, ppfd = df_ref$ppfd, ci = df_ref$ci/10, fapar = 1, gammastar = gammastar)$aj
+            df_loop$a_lim[i]    <- min(df_loop$ac[i], df_loop$aj_farq[i], df_loop$aj_smith[i])
+            
+            # ## Anet:
+            # df_loop$ac[i]       <- df_loop$ac[i]       - df_loop$rd[i]
+            # df_loop$aj_farq[i]  <- df_loop$aj_farq[i]  - df_loop$rd[i]
+            # df_loop$aj_smith[i] <- df_loop$aj_smith[i] - df_loop$rd[i]
+            # df_loop$a_lim[i]    <- min(df_loop$ac[i], df_loop$aj_farq[i], df_loop$aj_smith[i])
+            
+            ## Define limiting rate
+            if (df_loop$a_lim[i] == df_loop$ac[i]) df_loop$lim[i]        <- "ac"
+            if (df_loop$a_lim[i] == df_loop$aj_farq[i]) df_loop$lim[i]   <- "aj_farq"
+            if (df_loop$a_lim[i] == df_loop$aj_smith[i]) df_loop$lim[i]  <- "aj_smith"
+        }
+        df_out_jmax <- bind_rows(list(df_out_jmax, df_loop))
+    }
+    
+    ## .................................................................................................
+    ## Plot
+    maximum <- max(df_out_jmax$aj_smith, df_out_jmax$aj_farq, df_out_jmax$ac)
+
+    df_plot_jmax <- df_out_jmax %>%
+        pivot_longer(cols = c(ac, aj_farq, aj_smith), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum,
+               jmax_acc  = ifelse(rate == "ac", v_acc_jmax[1], jmax_acc),
+               jmax_acc  = as.factor(jmax_acc*10^6))
+    
+    (p_jmax <- df_plot_jmax %>% ggplot() +
+            aes(tc_air, a, color = jmax_acc, group = jmax_acc) +
+            geom_line(alpha = 1, size = 1) +
+            facet_wrap(~rate, labeller = vlabeller) +
+            scale_color_viridis_d(name = bquote("Acclimated" ~ J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]:  ")) +
+            guides(color = guide_legend(ncol = 8, direction = "horizontal")) +
+            ylab(bquote("Normalized rate [-]")) +
+            xlab("Temperature [°C]") +
+            theme(legend.position = "bottom") +
+            ggtitle(bquote("Sensitivity of gross assimilation rates to acclimated" ~ J[max])))
+    
+    # ggsave("~/projects/mscthesis/docs/fig-", p, height = 7, width = 8)
+    
+    # p <- p_ppfd / p_jmax
+    
+    return(p_jmax) 
+}
+
+## .................................................................................................
+sens_agross_anet <- function() {
+    
+    ## A_gross curves
+    df_ref <- get_df_ref()
+    # df_ref$ppfd <- 1800e-6
+    df_ref$nsteps <- df_ref$nsteps
+    df_tib <- tibble(
+        tc_air = seq(0, 40, length.out = df_ref$nsteps),
+        ac     = rep(NA, df_ref$nsteps),
+        aj_farq = rep(NA, df_ref$nsteps),
+        aj_smith = rep(NA, df_ref$nsteps),
+        a_lim  = rep(NA, df_ref$nsteps),
+        lim    = rep(NA, df_ref$nsteps),
+        rd     = rep(NA, df_ref$nsteps)
+    )
+    vlabeller <- function(variable,value){return(vnames[value])}
+    vnames <-list("ac" = "Ac", "aj_smith"  = "Aj (Smith)", "aj_farq"  = "Aj (Farquhar)")
+    
+    for (i in 1:nrow(df_tib)) {
+        ## Get temperature dependent variables:
+        gammastar <- calc_gammastar(df_tib$tc_air[i], df_ref$patm)
+        kmm <- calc_kmm(df_tib$tc_air[i], df_ref$patm)
+        vcmax <- df_ref$vcmax_start * calc_ftemp_inst_vcmax(df_tib$tc_air[i], tcgrowth = df_ref$tc_growth)
+        jmax <- df_ref$jmax_start * calc_ftemp_inst_jmax(df_tib$tc_air[i], tcgrowth = df_ref$tc_growth, tchome = df_ref$tc_home)
+        
+        ## Rd
+        df_tib$rd[i]       <- calc_rd(df_tib$tc_air[i], vcmax = df_ref$vcmax_start)
+        
+        ## Agross:
+        df_tib$ac[i]       <- calc_ac(ci = df_ref$ci/10, gammastar = gammastar, kmm = kmm, vcmax = vcmax)$ac
+        df_tib$aj_farq[i]  <- calc_aj(j_method = "farquhar89", kphio = df_ref$kphio*4, jmax = jmax, ppfd = df_ref$ppfd, ci = df_ref$ci/10, fapar = 1, gammastar = gammastar)$aj
+        df_tib$aj_smith[i] <- calc_aj(j_method = "smith37", kphio = df_ref$kphio, jmax = jmax, ppfd = df_ref$ppfd, ci = df_ref$ci/10, fapar = 1, gammastar = gammastar)$aj
+        df_tib$a_lim[i]    <- min(df_tib$ac[i], df_tib$aj_farq[i], df_tib$aj_smith[i])
+        
+        # ## Anet:
+        # df_tib$ac[i]       <- df_tib$ac[i]       - df_tib$rd[i]
+        # df_tib$aj_farq[i]  <- df_tib$aj_farq[i]  - df_tib$rd[i]
+        # df_tib$aj_smith[i] <- df_tib$aj_smith[i] - df_tib$rd[i]
+        # df_tib$a_lim[i]    <- min(df_tib$ac[i], df_tib$aj_farq[i], df_tib$aj_smith[i])
+        
+        ## Define limiting rate
+        if (df_tib$a_lim[i] == df_tib$ac[i]) df_tib$lim[i]        <- "ac"
+        if (df_tib$a_lim[i] == df_tib$aj_farq[i]) df_tib$lim[i]   <- "aj_farq"
+        if (df_tib$a_lim[i] == df_tib$aj_smith[i]) df_tib$lim[i]  <- "aj_smith"
+    }
+    
+    
+    ## .................................................................................................
+    ## Gross
+    maximum <- max(df_tib$aj_smith)
+    
+    df_plot <- df_tib %>%
+        pivot_longer(cols = c(ac, aj_farq, aj_smith), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum)
+    
+    (p_gross <- ggplot() +
+            geom_line(data = df_plot %>% dplyr::filter(rate == "ac"),       aes(tc_air, a, color = "Ac"),    linetype = 1,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot %>% dplyr::filter(rate == "aj_smith"), aes(tc_air, a, color = "Aj (Smith)"),    linetype = 3,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot %>% dplyr::filter(rate == "aj_farq"),  aes(tc_air, a, color = "Aj (Farquhar)"),    linetype = 1,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot ,                                      aes(tc_air, a_lim, color = "min(Ac, Aj)"), linetype = 2,   alpha = 1, size = 1.25) +
+            geom_line(data = df_plot, aes(tc_air, rd, color = "Rd")) +
+            scale_color_manual(values = c("Ac" = "#FFCD08",
+                                          "Aj (Farquhar)" = "#DE5207",
+                                          "Aj (Smith)" = "#DE5207",
+                                          "min(Ac, Aj)" = "#F58706",
+                                          "Rd" = "black"),
+                               name = "Rate:",
+                               guide = guide_legend(override.aes=list(alpha=1, linetype = c(1,2,3,2,1)))) +
+            ylim(0, 1.01) +
+            xlab("Temperature [°C]") +
+            ylab(bquote("Normalized rate [-]")) +
+            ggtitle("Gross assimilation and respiration rates"))
+    
+    # ggsave("~/projects/mscthesis/docs/fig-comparison-gross-rates.pdf", p1, height = 4, width = 5.5)
+    ## .................................................................................................
+    ## Anet
+    df_plot2 <- df_tib %>%
+        pivot_longer(cols = c(ac, aj_farq, aj_smith), values_to = "a", names_to = "rate") %>% 
+        mutate(rate = as.factor(rate),
+               a_lim = a_lim - rd,
+               a     = a - rd,
+               a_lim = a_lim/maximum,
+               rd    = rd/maximum,
+               a     = a/maximum)
+    
+    (p_net<- ggplot() +
+            geom_line(data = df_plot2 %>% dplyr::filter(rate == "ac"),       aes(tc_air, a, color = "Ac"),    linetype = 1,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot2 %>% dplyr::filter(rate == "aj_smith"), aes(tc_air, a, color = "Aj (Smith)"),    linetype = 3,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot2 %>% dplyr::filter(rate == "aj_farq"),  aes(tc_air, a, color = "Aj (Farquhar)"),    linetype = 1,   alpha = 0.5, size = 1.25)  +
+            geom_line(data = df_plot2 ,                                      aes(tc_air, a_lim, color = "min(Ac, Aj)"), linetype = 2,   alpha = 1, size = 1.25) +
+            scale_color_manual(values = c("Ac" = "#FFCD08",
+                                          "Aj (Farquhar)" = "#DE5207",
+                                          "Aj (Smith)" = "#DE5207",
+                                          "min(Ac, Aj)" = "#F58706"),
+                               name = "Rate:",
+                               guide = guide_legend(override.aes=list(alpha=1, linetype = c(1,1,3,1)))) +
+            ylim(0, 1.01) +
+            xlab("Temperature [°C]") +
+            ylab(bquote("Normalized rate [-]")) +
+            ggtitle("Net assimilation rates"))
+    
+    # ggsave("~/projects/mscthesis/docs/fig-comparison-net-rates.pdf", p2, height = 4, width = 5.5)
+    
+    ## .................................................................................................
+    ## Comparison plot:
+    pnet_2 <- p_net + ylab("") + scale_color_manual(values = c("Ac" = "#FFCD08",
+                                                               "Aj (Farquhar)" = "#DE5207",
+                                                               "Aj (Smith)" = "#DE5207",
+                                                               "min(Ac, Aj)" = "#F58706",
+                                                               "Rd" = "black"),
+                                                    name = "Rate:",
+                                                    guide = guide_legend(override.aes=list(alpha=1, linetype = c(1,1,3,2,1)))) 
+    
+    p_gross_2 <- p_gross + guides(color = "none")
+    
+    (p3 <- p_gross_2 + pnet_2 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+    
+    return(p3)
+    
+    # ggsave("~/projects/mscthesis/docs/fig-comparison-both-rates.pdf", p3, height = 4, width = 8)
+}
+
+## .................................................................................................
+sens_energybalance <- function() {
+    ## Setup for df_ref
+    df_ref <- get_df_ref()
+    
+    ## Testing different inputs
+    # df_ref$ppfd <- 1500-6
+    # df_ref$vpd <- 500
+    
+    ## Setup for df_full
+    nsteps   <- 20
+    # nsteps   <- df_ref$nsteps
+    df_ref$ppfd <- 1500e-6
+    df_ref$vpd  <- 500
+    
+    tc_air_v <- seq(0, 45, length.out = nsteps)
+    gs_w_v   <- seq(0.04e-6, 4e-6, length.out = 5)
+    setups   <- c("plantecophys", "tealeaves")
+    l_all    <- length(tc_air_v) * length(gs_w_v) * length(setups)
+    
+    
+    ## Get tibble of varying tc_air at different gs:
+    df_full <- tibble(tc_air = 1, gs_w = 1, setup = "A", tc_leaf = 1) %>% slice(-1)
+    
+    for (s in setups) {
+        for (g in gs_w_v) {
+            for (t in tc_air_v) {
+                df_loop <- tibble(tc_air = t, gs_w = g, setup = s)
+                df_full <- bind_rows(list(df_full, df_loop))
+            }
+        }
+    }
+    
+    for (n in 1:nrow(df_full)) {
+        cat('\014')
+        cat(round(n/nrow(df_full)*100, 0))
+        
+        df_full$tc_leaf[n] <- calc_tleaf_from_tair_with_fixed_gs(tc_air = df_full$tc_air[n],
+                                                                 gs_c = df_full$gs_w[n]/1.6,
+                                                                 vpd = df_ref$vpd,
+                                                                 patm = df_ref$patm,
+                                                                 ppfd = df_ref$ppfd,
+                                                                 method_eb = df_full$setup[n]
+        )
+    }
+    
+    p_eb <- df_full %>%
+        dplyr::filter(tc_leaf != tc_air) %>% 
+        mutate(setup = as.factor(setup),
+               gs_w = gs_w * 10^6) %>% 
+        ggplot() +
+        aes(tc_air, tc_leaf, color = gs_w, group = gs_w) + 
+        # geom_line(size = 2) + 
+        geom_smooth(size = 2) +
+        geom_abline() + 
+        facet_wrap(~setup) +
+        labs(color = bquote(g[s] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~"]:  ")) +
+        theme(legend.position = "bottom") +
+        ylim(0, 45) +
+        xlim(0, 45) +
+        xlab(bquote(T[air] ~ "[°C]")) +
+        ylab(bquote(T[leaf] ~ "[°C]"))
+    
+    return(p_eb)
+}
+
+## .................................................................................................
+# PHOTOSYNTHETIC CAPACITY ####
+# Run Analytical P-Model
+run_analytical_models_p21 <- function() {
+    ## Get data:
+    df_drivers_p21    <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds")
+    df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_clean_with_cl.rds") %>%
+        dplyr::select(-author) %>%
+        rename_with(tolower) %>%
+        dplyr::filter(!(is.na(vcmax) & is.na(jmax)),
+                      !is.na(date),
+                      !is.na(lat),
+                      !is.na(lon),
+                      date != "2053-05-11",
+                      date != "2081-08-27") %>%
+        group_by(site, date) %>%
+        nest() %>%
+        ungroup() %>%
+        rename(sitename = site,
+               data_raw = data)
+    
+    settings <- get_settings()
+    df_ana_s37   <- run_rpmodel_accl(settings = settings,
+                                     df_drivers = df_drivers_p21,
+                                     df_evaluation = df_evaluation_p21) %>% 
+        get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+    
+    
+    ## Farquhar:
+    settings <- get_settings()
+    settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+    df_ana_f89 <- run_rpmodel_accl(settings = settings,
+                                   df_drivers = df_drivers_p21,
+                                   df_evaluation = df_evaluation_p21) %>% 
+        get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+    
+    # RUN PLOT FUNCTIONS ...............................................................................
+    ## Smith:
+    p_ana_s37    <-
+        plot_two_long_df(
+            df_x = make_long_df(df_in = df_ana_s37, dataset = "analytical_s37"),
+            df_x_dataset = "analytical_s37",
+            df_y = make_df_evaluation_p21_long(df_in = df_ana_s37),
+            df_y_dataset = "peng21",
+            kphio_vcmax_corr = F,
+            return_separate = T,
+            model = "Smith"
+        )
+    
+    ## Farquhar:
+    p_ana_f89    <-
+        plot_two_long_df(
+            df_x = make_long_df(df_in = df_ana_f89, dataset = "analytical_f89"),
+            df_x_dataset = "analytical_f89",
+            df_y = make_df_evaluation_p21_long(df_in = df_ana_f89),
+            df_y_dataset = "peng21",
+            kphio_vcmax_corr = F,
+            return_separate = T,
+            model = "Farquhar"
+        )
+    out <- list(p_ana_s37 = p_ana_s37, p_ana_f89 = p_ana_f89)
+    return(out)
+}
+
+## .................................................................................................
+# Run Numerical P-Model
+run_numerical_models_p21 <- function() {
+    ## Get data:
+    df_drivers_p21    <- readRDS("~/data/mscthesis/final/df_drivers_p21.rds")
+    df_evaluation_p21 <- readRDS("~/data/mscthesis/raw/leaf_traits_peng2021/df_P21_clean_with_cl.rds") %>%
+        dplyr::select(-author) %>%
+        rename_with(tolower) %>%
+        dplyr::filter(!(is.na(vcmax) & is.na(jmax)),
+                      !is.na(date),
+                      !is.na(lat),
+                      !is.na(lon),
+                      date != "2053-05-11",
+                      date != "2081-08-27") %>%
+        group_by(site, date) %>%
+        nest() %>%
+        ungroup() %>%
+        rename(sitename = site,
+               data_raw = data)
+    
+    ## Smith:
+    settings <- get_settings()
+    settings$rpmodel_accl$method_optim <- "numerical"
+    df_num_s37   <- run_rpmodel_accl(settings = settings,
+                                     df_drivers = df_drivers_p21,
+                                     df_evaluation = df_evaluation_p21) %>% 
+        get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+    
+    
+    ## Farquhar:
+    settings <- get_settings()
+    settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+    settings$rpmodel_accl$method_optim <- "numerical"
+    df_num_f89 <- run_rpmodel_accl(settings = settings,
+                                   df_drivers = df_drivers_p21,
+                                   df_evaluation = df_evaluation_p21) %>% 
+        get_instant_vcmax_jmax(., ftemp_method = settings$rpmodel_accl$method_ftemp)
+    
+    # RUN PLOT FUNCTIONS ...............................................................................
+    ## Smith:
+    p_num_s37    <-
+        plot_two_long_df(
+            df_x = make_long_df(df_in = df_num_s37, dataset = "analytical_s37"),
+            df_x_dataset = "analytical_s37",
+            df_y = make_df_evaluation_p21_long(df_in = df_num_s37),
+            df_y_dataset = "peng21",
+            kphio_vcmax_corr = F,
+            return_separate = T,
+            model = "Smith"
+        )
+    
+    ## Farquhar:
+    p_num_f89    <-
+        plot_two_long_df(
+            df_x = make_long_df(df_in = df_num_f89, dataset = "analytical_f89"),
+            df_x_dataset = "analytical_f89",
+            df_y = make_df_evaluation_p21_long(df_in = df_num_f89),
+            df_y_dataset = "peng21",
+            kphio_vcmax_corr = F,
+            return_separate = T,
+            model = "Farquhar"
+        )
+    out <- list(p_num_s37 = p_num_s37, p_num_f89 = p_num_f89)
+    return(out)
+    
+}
+
+## .................................................................................................
+## Numerical Instability
+get_cost_function_instability <- function() {
+    ## Settings
+    settings <- get_settings()
+    # settings$rpmodel_accl$method_eb <- "plantecophys"
+    
+    ## Environmental setup
+    df_ref <- get_df_ref(settings)
+    df_ref$nsteps <- 50
+    df_ref$vcmax_start <-  50e-6  * 24 * 3600 #  #15, #   Input in: mol/m2/h           ### -> df_ref$vcmax_start * 3600 * 24
+    df_ref$jmax_start  <-  200e-6 * 24 * 3600 #  #40, #   Input in: mol/m2/h           ### -> df_ref$jmax_start * 3600 * 24
+    df_ref$gs_start    <-  5e-6  * 24 * 3600  #  #0.3,#   Input in: mol/m2/h           ### -> df_ref$gs_start * 3600 * 24
+    
+    ## Total cost versus optimized parameters ..........................................................
+    ## Tibble building ####
+    df_cost <- bind_rows(list =
+                             tibble(vcmax = seq(1, 250e-6, length.out = df_ref$nsteps),
+                                    jmax  = rep(df_ref$jmax_start, df_ref$nsteps),
+                                    gs    = rep(df_ref$gs_start, df_ref$nsteps),
+                                    cost_var   = "vcmax"),
+                         tibble(vcmax = rep(df_ref$vcmax_start, df_ref$nsteps),
+                                jmax  = seq(1, 250e-6, length.out = df_ref$nsteps),
+                                gs    = rep(df_ref$gs_start, df_ref$nsteps),
+                                cost_var   = "jmax"),
+                         tibble(vcmax = rep(df_ref$vcmax_start, df_ref$nsteps),
+                                jmax  = rep(df_ref$jmax_start, df_ref$nsteps),
+                                gs    = seq(0.01, 10, length.out = df_ref$nsteps),
+                                cost_var   = "gs"))
+    
+    
+    ## Doubling tibble to compare Jmax formulations
+    df_full <- bind_rows(list(tibble(df_cost, formulation = "smith37"),
+                              tibble(df_cost, formulation = "farquhar89"))) %>% 
+        
+        mutate(kphio      = ifelse(formulation == "smith37", settings$rpmodel_accl$kphio_calib, settings$rpmodel_accl$kphio_calib*4),
+               cost_total = NA,
+               cost_vcmax = NA,
+               cost_jmax  = NA,
+               cost_gs    = NA)
+    
+    ## Optimal vcmax at given conditions:
+    opt_vars <- calc_optimal_gs_vcmax_jmax(tc_air = df_ref$tc,
+                                           patm = df_ref$patm,
+                                           co2 = df_ref$co2,
+                                           vpd = df_ref$vpd,
+                                           ppfd = df_ref$ppfd,
+                                           fapar = df_ref$fapar,
+                                           kphio = settings$rpmodel_accl$kphio_calib,
+                                           vcmax_start = df_ref$vcmax_start,
+                                           jmax_start = df_ref$jmax_start,
+                                           gs_start = df_ref$gs_start,
+                                           method_jmaxlim_inst = settings$rpmodel_accl$method_jmaxlim,
+                                           method_eb  = settings$rpmodel_accl$method_eb)$varlist$vcmax_mine
+    
+    ## Run loop:
+    for (i in 1:nrow(df_full)) {
+        opt_output <- optimise_this_gs_vcmax_jmax(
+            par        = c(df_full$vcmax[i], df_full$gs[i], df_full$jmax[i]),
+            args       = c(df_ref$tc, df_ref$patm, df_ref$co2, df_ref$vpd),
+            iabs       = (df_ref$ppfd * df_ref$fapar),
+            kphio      = df_full$kphio[i],
+            method_jmaxlim_inst = df_full$formulation[i],
+            method_eb  = settings$rpmodel_accl$method_eb, 
+            maximize   = T,
+            return_all = TRUE)
+        
+        df_full$cost_total[i] <- opt_output$net_assim
+        df_full$cost_vcmax[i] <- opt_output$cost_vcmax
+        df_full$cost_jmax[i] <- opt_output$cost_jmax
+        df_full$cost_gs[i] <- opt_output$cost_transp
+    }
+    
+    ## Wrangling tibble for plotting
+    df_temp <- df_full %>%
+        mutate(
+            cost_var = as.factor(cost_var),
+            formulation = as.factor(formulation),
+            formulation = ifelse(formulation == "farquhar89", paste("Farquhar"), paste("Smith")),
+        )
+    
+    ## Labeller:
+    vnames <-list("vcmax" = bquote(V[cmax] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "jmax"  = bquote(J[max] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "gs" = bquote(g[s] ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
+    
+    vlabeller <- function(variable,value){
+        return(vnames[value])
+    }
+    
+    
+    
+    ## Plot effect on total costs
+    p_cost <- df_temp %>%
+        pivot_longer(cols = c(vcmax, jmax, gs), names_to = "names", values_to = "values") %>%
+        dplyr::filter(names == cost_var) %>%
+        # mutate(cost_total = cost_total/max(cost_total)) %>%
+        ggplot() +
+        aes(x = values, y = cost_total, color = formulation, linetype = formulation) +
+        # scale_color_grey() +
+        geom_line(alpha = 1, size = 1.5) +
+        facet_wrap(~names, scales = "free_x", ncol = 3, labeller = vlabeller) +
+        theme(legend.position = "bottom") + #legend.position = c(0.75, 0.25)
+        labs(linetype = bquote(J[max]~"- Lim.:"),
+             color = bquote(J[max]~"- Lim.:")) +
+        xlab(paste("Numerically optimized value")) +
+        # xlab("") +
+        # ylab(paste("Relative total costs"))
+        # ylab(bquote("Costs: ("~1.6*g[s]*D + beta*V[cmax] + c*J[max]~") / "~A[gross])) +
+        ylab("Total carbon cost") +
+        # ylim(500, 2500) +
+        scale_color_manual(name = bquote(J[max] ~ "- Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
+    
+    ## Plot effect on variable-related costs: ## UNIMPORTANT
+    ## For vcmax:
+    max_cost_vcmax <- max(df_temp$cost_total)
+    
+    p_v <- df_temp %>%
+        # mutate(cost_vcmax = cost_vcmax/cost_total,
+        #        cost_jmax = cost_jmax/max_cost_vcmax,
+        #        cost_gs = cost_gs/max_cost_vcmax) %>% 
+        dplyr::filter(cost_var == "vcmax") %>% 
+        ggplot() +
+        aes(vcmax, cost_vcmax, color = formulation, linetype = formulation) +
+        geom_line() + scale_color_grey() + theme_bw()
+    
+    p_j <- df_temp %>%
+        mutate(cost_vcmax = cost_vcmax/max_cost_vcmax,
+               cost_jmax = cost_jmax/max_cost_vcmax,
+               cost_gs = cost_gs/max_cost_vcmax) %>% 
+        dplyr::filter(cost_var == "jmax") %>% 
+        ggplot() +
+        aes(jmax, cost_total, color = formulation, linetype = formulation) +
+        geom_line() + scale_color_grey() + theme_bw() + ylim(0, 100)
+    
+    p_g <- df_temp %>%
+        mutate(cost_vcmax = cost_vcmax/max_cost_vcmax,
+               cost_jmax = cost_jmax/max_cost_vcmax,
+               cost_gs = cost_gs/max_cost_vcmax) %>% 
+        dplyr::filter(cost_var == "gs") %>% 
+        ggplot() +
+        aes(gs, cost_total, color = formulation, linetype = formulation) +
+        geom_line() + scale_color_grey() + theme_bw() + ylim(0, 100)
+    
+    p_j_inset <- p_j + ylim(0, 0.1)
+    
+    # Without inset:
+    # p_v + p_j + p_g + guide_area() + plot_layout(guides = "collect") 
+    
+    # With p_j inset:
+    # p_v + p_j + inset_element(p_j_inset, 0.6, 0.6, 1, 1) + p_g + guide_area()
+    
+    ## Starting value dependency ...........................................................................................
+    ## Tibble building:
+    df_start <- bind_rows(list =
+                              tibble(vcmax_start = seq(1, 20, length.out = df_ref$nsteps),
+                                     jmax_start  = rep(df_ref$jmax_start, df_ref$nsteps),
+                                     gs_start    = rep(df_ref$gs_start, df_ref$nsteps),
+                                     opt_var   = "vcmax_start"),
+                          tibble(vcmax_start = rep(df_ref$vcmax_start, df_ref$nsteps),
+                                 jmax_start  = seq(1, 20, length.out = df_ref$nsteps),
+                                 gs_start    = rep(df_ref$gs_start, df_ref$nsteps),
+                                 opt_var   = "jmax_start"),
+                          tibble(vcmax_start = rep(df_ref$vcmax_start, df_ref$nsteps),
+                                 jmax_start  = rep(df_ref$jmax_start, df_ref$nsteps),
+                                 gs_start    = seq(0.01, 1, length.out = df_ref$nsteps),
+                                 opt_var   = "gs_start"))
+    
+    ## Doubling tibble to compare Jmax formulations
+    df_full <- bind_rows(list(tibble(df_start, formulation = "smith37"),
+                              tibble(df_start, formulation = "farquhar89"))) %>% 
+        
+        mutate(kphio      = ifelse(formulation == "smith37", settings$rpmodel_accl$kphio_calib, settings$rpmodel_accl$kphio_calib*4),
+               vcmax_opt = NA,
+               jmax_opt = NA,
+               gs_opt  = NA)
+    
+    ## Run loop
+    for (i in 1:nrow(df_full)) {
+        opt_vars <- calc_optimal_gs_vcmax_jmax(tc_air = df_ref$tc,
+                                               patm = df_ref$patm,
+                                               co2 = df_ref$co2,
+                                               vpd = df_ref$vpd,
+                                               ppfd = df_ref$ppfd,
+                                               fapar = df_ref$fapar,
+                                               kphio = df_full$kphio[i],
+                                               vcmax_start = df_full$vcmax_start[i],
+                                               jmax_start = df_full$jmax_start[i],
+                                               gs_start = df_full$gs_start[i],
+                                               method_jmaxlim_inst = df_full$formulation[i],
+                                               method_eb = settings$rpmodel_accl$method_eb)
+        
+        df_full$vcmax_opt[i] <- opt_vars$varlist$vcmax_mine * 24 * 3600
+        df_full$jmax_opt[i]  <- opt_vars$varlist$jmax_mine * 24 * 3600
+        df_full$gs_opt[i]    <- opt_vars$varlist$gs_mine * 24 * 3600
+    }
+    
+    
+    ## Wrangling tibble for plotting
+    df_temp_start <- df_full %>%
+        mutate(opt_var = as.factor(opt_var),
+               formulation = as.factor(formulation))
+    # 
+    # if (remove_non_convergence) {
+    #     df_temp <- df_temp %>% dplyr::filter(opt_convergence == 0 | is.na(opt_convergence))
+    # }
+    
+    ## For labeling facet wrap:
+    vnames <-list("vcmax_start" = bquote(V[cmax] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "jmax_start"  = bquote(J[max] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "gs_start" = bquote(g[s] ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"),
+                  "vcmax_opt" = bquote(V[cmax] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "jmax_opt"  = bquote(J[max] ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"),
+                  "gs_opt" =    bquote(g[s] ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
+    
+    vlabeller <- function(variable,value){
+        return(vnames[value])
+    }
+    
+    ## Generating plots ####
+    ## Create empty list
+    
+    targets <- c("vcmax_opt", "jmax_opt", "gs_opt")
+    drivers <- c("vcmax_start", "jmax_start", "gs_start")
+    p_all <- list()
+    
+    for (t in targets) {
+        
+        ## Create base ggplot:
+        p_append <- df_temp_start %>%
+            pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+            pivot_longer(cols = all_of(t), names_to = "targets", values_to = "targets_value") %>% 
+            dplyr::filter(targets == t,
+                          driver  == opt_var) %>% 
+            ggplot() + 
+            aes(x = driver_value, y = targets_value, color = formulation, shape = formulation, linetype = formulation) +
+            # geom_point(size = 2, alpha = 0.6) +
+            geom_line(size = 1.5, alpha = 0.8) +
+            # scale_color_grey() +
+            # scale_shape_manual(values = c("farquhar89" = 16, "smith37" = 17)) +
+            # scale_color_manual(values = c("analytical" = "orange", "numerical" = "brown")) +
+            # scale_linetype_manual(values = c("farquhar89" = 1, "smith37" = 2)) +
+            facet_wrap(~driver, ncol = 3, scales = "free_x", labeller = vlabeller) +
+            ylim(0, 20) +
+            
+            ## Add text
+            xlab(paste("Start Value")) +
+            ylab(paste(t)) +
+            # labs(caption = paste0("\n Reference conditions (vertical grey lines):\n",
+            #                                              "tc = ", df_ref$tc, " [°C]",
+            #                                              ", tc_home = ", df_ref$tc_home, " [°C]",
+            #                                              ", vpd = ", df_ref$vpd, " [Pa]",
+            #                                              ", co2 = ", df_ref$co2, " [ppm]",
+            #                                              ", ppfd = ", df_ref$ppfd, " [mol /m2 / s]",
+            #                                              ", patm = ", df_ref$patm, " [Pa]")) +
+            # labs(title = paste0("Effect of starting conditions")) +
+            # theme_bw() +
+            theme(plot.caption = element_text(hjust = 0.5, size = 10, lineheight = 1.1),
+                  strip.text.x = element_text(size = 10),
+                  legend.position = c(0.75, 0.25)) +
+            labs(linetype = bquote(J[max]~"-Formulation"),
+                 color = bquote(J[max]~"-Formulation")) +
+            scale_color_manual(name = bquote(J[max] ~ " - Lim.:"),
+                               values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742"))
+        
+        ## Append plot to list
+        p_all[[length(p_all)+1]] <- p_append
+    }
+    
+    p1 <- p_all[[1]] + xlab("") + ylim(0, 20) + theme(axis.ticks.x = element_blank(), axis.text.x = element_blank()) + ylab(bquote(V[cmax]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"))
+    p2 <- p_all[[2]] + xlab("") + ylim(0, 40) + theme(strip.text.x = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank())  + ylab(bquote(J[max]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ "]"))
+    p3 <- p_all[[3]] + xlab("Start Value") + ylim(0, 0.5) + theme(strip.text.x = element_blank())  + ylab(bquote(g[s]^opt ~ "[mol" ~ m^-2 ~ h ^-1 ~ Pa^-1 ~ "]"))
+    p_starting_conditions_patch <- p1 / p2 / p3 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(caption = paste0("Fixed starting values: vcmax = ", df_ref$vcmax_start, 
+                                                                                                                                                         ", jmax = ", df_ref$jmax_start, 
+                                                                                                                                                         ", gs = ", df_ref$gs_start))
+    
+    library(facetscales)
+    scales_x <- list(
+        "vcmax_start" = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+        "jmax_start"  = scale_x_continuous(limits = c(0, 250)),#breaks = seq(0, 20, length.out = 5)),
+        "gs_start"    = scale_x_continuous(limits = c(0, 10))) #breaks = seq(0, 1, length.out = 5)))
+    
+    scales_y <- list(
+        "vcmax_opt" = scale_y_continuous(limits = c(0, 250)),  #breaks = seq(0, 20, length.out = 5)),
+        "jmax_opt"  = scale_y_continuous(limits = c(0, 1000)),  #breaks = seq(0, 20, length.out = 5)),
+        "gs_opt"    = scale_y_continuous(limits = c(0, 10))) #breaks = seq(0.1, 0.5,  length.out = 5)))
+    
+    ## Call Labeller
+    vnames <-list("vcmax_start" = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+                  "jmax_start"   = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+                  "gs_start"       = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"),
+                  "vcmax_opt"   = bquote(V[cmax] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+                  "jmax_opt"     = bquote(J[max] ~ "[umol" ~ m^-2 ~ s ^-1 ~ "]"),
+                  "gs_opt"         = bquote(g[s] ~ "[umol" ~ m^-2 ~ s ^-1 ~ Pa^-1 ~ "]"))
+    
+    ## - Call plot
+    (p_starting_conditions_facet <- df_temp_start %>%
+            mutate(formulation = ifelse(formulation == "smith37", "Smith", "Farquhar")) %>% 
+            pivot_longer(cols = all_of(drivers), names_to = "driver", values_to = "driver_value") %>%
+            pivot_longer(cols = all_of(targets), names_to = "targets", values_to = "targets_value") %>% 
+            dplyr::filter(targets == targets,
+                          driver  == opt_var) %>%
+            
+            ## Aesthetics
+            ggplot() + 
+            # aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation, linetype = formulation) +
+            aes(x = driver_value/3600/24*10^6, y = targets_value /3600/24*10^6, color = formulation, shape = formulation) +
+            geom_line(size = 1, alpha = 0.8) +
+            # scale_color_grey() +
+            # facet_grid(targets ~ driver, scales = "free", switch = "both", labeller = vlabeller) +
+            # facet_grid(targets ~ driver, scales = "free", switch = "both") +
+            facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = list(y=scales_y, x=scales_x) , switch = "both", labeller = vlabeller) +
+            # facet_grid_sc(rows = vars(targets), cols = vars(driver), scales = "free") +
+            theme(legend.position = "bottom", 
+                  text = element_text(size = 6)) +
+            scale_color_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "#00A1A0", "Smith" = "#FF8742")) +
+            scale_linetype_manual(name = bquote(J[max] ~ " - Lim.:"), values = c("Farquhar" = "solid", "Smith" = "dashed")) +
+            
+            ## Labels
+            ylab("Output Value") +
+            xlab("Starting Value") +
+            labs(linetype = bquote(J[max] ~ " - Lim.:"),
+                 color = bquote(J[max] ~ " - Lim.:")))
+    
+    # labs(subtitle = bquote("Fixed starting values:" ~ V[cmax] ~ " = " ~ .(df_ref$vcmax_start/3600/24*10^6) ~
+    #                       "," ~ J[max] ~ " = " ~ .(df_ref$jmax_start/3600/24*10^6) ~
+    #                       "," ~ g[s] ~ " = " ~ .(df_ref$gs_start/3600/24*10^6)),
+    #      title = "Effect of starting values (no energy balance)"))
+    
+    return(p_starting_conditions_facet)
+}
+
+## .................................................................................................
+# Function to extract tc_opt ####
+library(lme4)
+fit_nonlinear_topt <- function(dat, x = "", y = "", random = ""){
+    
+    ## Checks ####
+    # Catching data aggregations with too little entries
+    if (nrow(dat) <= 3) {
+        fit_method <- "NA"
+        out <- tibble(aopt = NA,
+                      aopt.se = NA,
+                      topt = NA,
+                      topt.se = NA,
+                      b = NA,
+                      b.se = NA,
+                      r2 = NA,
+                      s = NA,
+                      pvalue = NA,
+                      fit_method = fit_method)
+        return(out)
+    }
+    
+    # Define b as negative for if-checks later due to nlme() algorithm
+    # being unable to constrain estimates to be positive
+    b <- -1
+    
+    ## Generalize ####
+    dat$random <- dat[[random]]
+    dat$y <- dat[[y]]
+    dat$x <- dat[[x]]
+    
+    fit_method <- "NLME"
+    
+    ## Try NLME fit ####
+    fit <- tryCatch(
+        {fit <- nlme(y~Aopt-(b*(x-Topt)^2),fixed=list(Aopt + Topt + b ~ 1), random = Aopt+Topt ~ 1 | random,
+                     start=list(fixed = c(Aopt = max(dat$y), Topt = 25, b = 0.05)),
+                     data=dat,
+                     # Stable:
+                     # control = list(msMaxIter=1000))
+                     
+                     # In development: Worked on 2021-06-23, Problem: arameter cannot be constrained
+                     # control = nlmeControl(opt = "nlminb", maxiter=1000, lower = c(-Inf, -Inf, 0.000001)))
+                     
+                     # Working update from 2021-06-23:
+                     control = nlmeControl(opt = "nlminb", maxiter=10000))
+        },
+        
+        warning = function(cond){
+            # print("There was a warning")
+            return(NA)
+        },
+        error = function(cond){
+            # print("This message will not be printed.")
+            return(NA)
+        },
+        finally = {
+            #pass
+        })
+    
+    ## Extract and return fit information
+    if (length(fit) != 1) {
+        aopt<-summary(fit)$tTable[[1]]
+        topt<-summary(fit)$tTable[[2]]
+        b<-summary(fit)$tTable[[3]]
+        aopt.se<-summary(fit)$tTable[[4]]
+        topt.se<-summary(fit)$tTable[[5]]
+        b.se<-summary(fit)$tTable[[6]]
+        
+        #to get R2 between fitted and observed photosynthesis
+        r<-cor(fitted(fit),dat$Photo)
+        r2<-r*r
+        
+        #test for normality of residuals
+        rest<-residuals(fit)
+        norm<-shapiro.test(rest)
+        s<-norm$statistic
+        pvalue<-norm$p.value
+        
+        param<-cbind(aopt,topt,b,aopt.se,topt.se,b.se)
+        
+        names(param)[1:6] <- c("aopt","topt","b","aopt.se","topt.se","b.se")
+        
+        #return(param)
+        #return(c(param,r2,s,pvalue))
+        
+        out <- tibble(aopt = aopt,
+                      aopt.se = aopt.se,
+                      topt = topt,
+                      topt.se = topt.se,
+                      b = b,
+                      b.se = b.se,
+                      r2 = r2,
+                      s = s,
+                      pvalue = summary(fit)$tTable[[14]],
+                      fit_method = fit_method)
+    }
+    
+    ## Try NLS fit, if NLME failed ####
+    if (length(fit) == 1 | b < 0) {
+        fit_method <- "NLS"
+        
+        fit <- tryCatch(
+            {fit <- nls(Photo ~ Aopt - (b * (x - Topt)^2),
+                        start = list(Aopt = max(dat$Photo), Topt = 25, b = 0.05),
+                        data = dat,
+                        # Stable:
+                        # control = list(msMaxIter=1000))
+                        
+                        # In development: Worked on 2021-06-23
+                        control = list(maxiter = 10000),
+                        lower = c(-Inf, -Inf, 0.00001),
+                        algorithm = "port")
+            },
+            
+            warning = function(cond){
+                # print("There was a warning")
+                return(NA)
+            },
+            error = function(cond){
+                # print("This message will not be printed.")
+                return(NA)
+            },
+            finally = {
+                #pass
+            })
+        
+        ## Extract and return fit information
+        if (fit_method == "NLS" & length(fit) != 1) {
+            # In dev.:
+            results <- summary(fit)$coefficients
+            
+            
+            # Old and working:
+            # A.1<-summary(fit)
+            # results<-(A.1$coefficients[1:6])
+            # names(results)[1:6] <- c("aopt","topt","b","aopt.se","topt.se","b.se")
+            
+            # Catching non-convergence errors that give NA for the fit's s.e.
+            if ((is.nan(results[5]))) {
+                fit_method <- "NA"
+                out <- tibble(aopt = NA,
+                              aopt.se = NA,
+                              topt = NA,
+                              topt.se = NA,
+                              b = NA,
+                              b.se = NA,
+                              r2 = NA,
+                              s = NA,
+                              pvalue = NA,
+                              fit_method = fit_method)
+                return(out)
+            }
+            
+            #TT.i <- seq(min(dat$x),max(dat$x),length=51)
+            #predicts <- predictNLS(fit, newdata=data.frame(x = TT.i),interval="confidence",level=0.95)
+            #predicts.df <- data.frame(predicts$summary)
+            #predicts.df$x <- TT.i
+            
+            r<-cor(fitted(fit), dat$Photo)
+            r2<-r*r
+            
+            #test for normality of residuals
+            rest<-residuals(fit)
+            norm<-shapiro.test(rest)
+            s<-norm$statistic
+            pvalue<-norm$p.value
+            
+            out <- tibble(aopt = results[1],
+                          aopt.se = results[4],
+                          topt = results[2],
+                          topt.se = results[5],
+                          b = results[3],
+                          b.se = results[6],
+                          r2 = r2,
+                          s = s,
+                          pvalue = results[11],
+                          fit_method = fit_method)
+        }
+    }
+    
+    ## Return NA, if all fits failed ####
+    if (fit_method == "NLS" & length(fit) == 1) {
+        
+        fit_method <- "NA"
+        out <- tibble(aopt = NA,
+                      aopt.se = NA,
+                      topt = NA,
+                      topt.se = NA,
+                      b = NA,
+                      b.se = NA,
+                      r2 = NA,
+                      s = NA,
+                      pvalue = NA,
+                      fit_method = fit_method)
+    }
+    return(out)
+}
+
 
 
 # TEST ZONE -------------------------------------------------------------------

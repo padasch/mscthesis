@@ -1,0 +1,381 @@
+---
+title: "Documentation of all Results"
+date: "`r Sys.Date()`"
+author: "Pascal Schneider"
+output:
+  rmdformats::downcute:
+    code_folding: hide
+    lightbox: true
+    gallery: true
+---
+
+```{r, setup}
+knitr::opts_chunk$set(warning = F, message = F)
+```
+
+
+# Information
+- This file holds the generation of all figures that were presented in the master's thesis.
+- I do not own any of the underlying data which is why I only report the final results and the functions used to extract the data.
+- Original data can be found in
+    - Optimal Temperature: Kumarathunge, Dushan P., et al. "Acclimation and adaptation components of the temperature dependence of plant photosynthesis at the global scale." New Phytologist 222.2 (2019): 768-784.
+    - Appendix: Numerical P-Model: Peng, Yunke, et al. "Global climate and nutrient controls of photosynthetic capacity." Communications biology 4.1 (2021): 1-9.
+
+# Run Model / Load Data
+## Functions and Packages
+```{r}
+suppressMessages(source("source_fct_pkg.R"))
+```
+
+## rsofun Benchmark
+```{r}
+## See "benchmark_gpp_v3.4_instant.Rmd"
+```
+
+## Optimal Temperature
+```{r}
+## Run models
+# load("~/data/rsofun_benchmarking/df_drivers_topt_v3.4.Rdata")
+# df_drivers_k19     <- df_drivers_topt
+# df_evaluation_k19  <- readRDS("~/data/mscthesis/final/df_obs_opt_postQC.rds")
+# all_inst_smith_meas_with_eb    <- run_topt_models(smith_or_farq = "smith37",       ppfd_growth_or_meas = "metainfo", with_eb_models = T, df_drivers_k19, df_evaluation_k19)
+# all_inst_farq_meas_with_eb     <- run_topt_models(smith_or_farq = "farquhar89",    ppfd_growth_or_meas = "metainfo", with_eb_models = T, df_drivers_k19, df_evaluation_k19)
+# all_inst_smith_growth_with_eb  <- run_topt_models(smith_or_farq = "smith37",       ppfd_growth_or_meas = "growth", with_eb_models = T,   df_drivers_k19, df_evaluation_k19)
+# all_inst_farq_growth_with_eb   <- run_topt_models(smith_or_farq = "farquhar89",    ppfd_growth_or_meas = "growth", with_eb_models = T,   df_drivers_k19, df_evaluation_k19)
+
+all_inst_smith_meas_with_eb    <- readRDS("~/projects/mscthesis/data/df-topt-simulations-smith37-metainfo.rds") # See function run_topt_models() in rpmodel_subroutines.R
+all_inst_farq_meas_with_eb     <- readRDS("~/projects/mscthesis/data/df-topt-simulations-farquhar89-metainfo.rds") # See function run_topt_models() in rpmodel_subroutines.R
+all_inst_smith_growth_with_eb  <- readRDS("~/projects/mscthesis/data/df-topt-simulations-smith37-growth.rds") # See function run_topt_models() in rpmodel_subroutines.R
+all_inst_farq_growth_with_eb   <- readRDS("~/projects/mscthesis/data/df-topt-simulations-farquhar89-growth.rds") # See function run_topt_models() in rpmodel_subroutines.R
+```
+
+## Numerical P-Model
+```{r}
+## Predictions
+### Without energy balance
+p21_analytical <- run_analytical_models_p21()
+p21_numerical <- run_numerical_models_p21()
+
+### With energy balance
+p_noeb <-  readRDS("~/projects/mscthesis/data/p_p21_noeb.rds")
+p_eb_te <- readRDS("~/projects/mscthesis/data/p_p21_eb_te.rds")
+p_eb_pl <- readRDS("~/projects/mscthesis/data/p_p21_eb_pl.rds")
+
+## Sensitivity Analysis
+settings <- get_settings()
+p_s37 <- rpmodel_env_response(settings = settings, p_output = "per_target")
+settings$rpmodel_accl$method_jmaxlim <- "farquhar89"
+p_f89 <- rpmodel_env_response(settings = settings, p_output = "per_target")
+```
+
+
+# Modelling Photosynthesis
+## Fig. 2.1. Correlation of predicted against observed Agross using the instantaneous P-Model with Smith-Formulation
+```{r}
+## See "benchmark_gpp_v3.4_instant.Rmd"
+```
+
+## Fig. 2.2. Sensitivity analysis of energy balance models
+```{r fig.height=4, fig.width=6}
+p <- sens_energybalance()
+p
+```
+
+
+# Optimal Temperature
+## Fig. 3.1. Global map of Topt sampling sites
+```{r}
+## todo
+```
+
+## Fig. 3.2. Correlation of observed against predicted Topt using the analytical acclimated P-Model with Smith-Formulation and daily mean light conditions as forcing
+```{r}
+p_ <- all_inst_smith_growth_with_eb$ana$plot + labs(caption = NULL, title = NULL) + guides(fill = guide_legend(ncol = 4, title.position = "top"))
+(p <- p_ + guide_area() + plot_layout(guides = "collect"))
+```
+
+## Fig. 3.3. Correlation of observed against predicted Topt using the analytical acclimated P-Model setups and high light conditions as forcing
+```{r fig.height=3.5, fig.width=6}
+p1 <-  all_inst_smith_meas_with_eb$ana$plot + labs(title = "Smith-Formulation", caption = NULL)
+p2 <-  all_inst_farq_meas_with_eb$ana$plot + labs(title = "Farquhar-Formulation", caption = NULL) + ylab(NULL)
+(p <- p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom", plot.subtitle = element_text(size = 9)))
+```
+
+## Fig. 3.4. Correlation of observed against predicted Topt using the numerical acclimated P-Model with and without energy balance models and with high light conditions as forcing
+```{r fig.height=4.25, fig.width=6.5}
+## Smith (included in results)
+p0 <-  all_inst_smith_meas_with_eb$num$plot + labs(title = "no energy balance", caption = NULL)
+p1 <-  all_inst_smith_meas_with_eb$pla$plot + labs(title = "plantecophys", caption = NULL)  + ylab(NULL)
+p2 <-  all_inst_smith_meas_with_eb$tea$plot + labs(title = "tealeaves", caption = NULL) + ylab(NULL)
+(p <- p0 + p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & theme(plot.subtitle = element_text(size = 9)))
+
+## Farquhar (not included because difference to Smith is negligible)
+p0 <-  all_inst_farq_meas_with_eb$num$plot + labs(title = "no energy balance", caption = NULL)
+p1 <-  all_inst_farq_meas_with_eb$pla$plot + labs(title = "plantecophys", caption = NULL)  + ylab(NULL)
+p2 <-  all_inst_farq_meas_with_eb$tea$plot + labs(title = "tealeaves", caption = NULL) + ylab(NULL)
+(p <- p0 + p1 + p2 + plot_layout(guides = "collect") & theme(legend.position = "bottom") & theme(plot.subtitle = element_text(size = 9)))
+```
+
+## Fig. 3.5. Comparison of observed Topt to observed growth Tair and predicted growth Tleaf using high light forcing
+```{r fig.height=4, fig.width=8}
+out_sim_leaf <- plot_topt_tgrowth(df_in = all_inst_smith_meas_with_eb$df_all, y = "tc_opt_obs")
+(p <- out_sim_leaf$p_p_opt_gro + labs(subtitle = "High light forcing"))
+```
+
+## Fig. 3.6. Uncoupling of growth Tleaf and Tair using different light forcing
+```{r fig.height=6, fig.width=8}
+out_high <- plot_topt_tgrowth(df_in = all_inst_smith_meas_with_eb$df_all, y = "tc_opt_obs")
+out_low <- plot_topt_tgrowth(df_in  = all_inst_smith_growth_with_eb$df_all, y = "tc_opt_obs")
+p_high <- out_high$p_air_lea + labs(title = NULL, subtitle = "High light forcing")
+p_low  <- out_low$p_air_lea +  labs(title = NULL, subtitle = "Low light forcing")  + xlab(NULL)
+(p <- p_low / p_high + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = "Uncoupling of air and leaf temperatures"))
+```
+
+# Appendix: Numerical P-Model
+## Fig. B.1. Global distribution of the sampling sites of observed Vcmax and Jmax from dataset by Peng et al.
+```{r}
+## todo
+```
+
+
+## Fig. B.2. Correlation of observed against predicted Vcmax using the analytical acclimated P-Model setups
+```{r}
+p_ana_s37 <- p21_analytical$p_ana_s37
+p_ana_f89 <- p21_analytical$p_ana_f89
+
+(p <- p_ana_s37$pvcmax + p_ana_f89$pvcmax + ylab("") +
+    plot_layout(guides = "collect")  &
+    plot_annotation(title = bquote(V[cmax]~" predicted via Analytical P-Model")) &
+    theme(legend.position = "bottom", legend.justification = "center"))
+```
+
+
+## Fig. B.3. Correlation of observed against predicted Vcmax using the numerical acclimated P-Model setups
+```{r}
+p_num_s37 <- p21_numerical$p_num_s37
+p_num_f89 <- p21_numerical$p_num_f89
+
+(p <- p_num_s37$pvcmax + p_num_f89$pvcmax + ylab("") +
+    plot_layout(guides = "collect")  &
+    plot_annotation(title = bquote(V[cmax]~" predicted via Numerical P-Model")) &
+    theme(legend.position = "bottom", legend.justification = "center"))
+```
+
+## Fig. B.4. Correlation of observed against predicted Jmax using the analytical acclimated P-Model setups
+```{r}
+(p <- p_ana_s37$pjmax + p_ana_f89$pjmax + ylab("") +
+    plot_layout(guides = "collect")  &
+    plot_annotation(title = bquote(J[max]~" predicted via Analytical P-Model")) &
+    theme(legend.position = "bottom", legend.justification = "center"))
+```
+
+## Fig. B.5. Correlation of observed against predicted Jmax using the numerical acclimated P-Model setups
+```{r}
+p1 <- p_num_s37$pjmax + xlim(0, 400)
+p2 <- p_num_f89$pjmax + xlim(0, 400) + ylab("")
+
+(p <- p1 + p2 +
+    plot_layout(guides = "collect")  &
+    plot_annotation(title = bquote(J[max]~" predicted via Numerical P-Model")) &
+    theme(legend.position = "bottom", legend.justification = "center"))
+```
+
+## Fig. B.6. Sensitivity analysis of Vcmax, Jmax and χ of the analytical P-Model setups
+```{r, fig.height = 8, fig.width = 8}
+both_ana <- bind_rows(list(p_s37$data %>% dplyr::filter(model == "analytical"),
+                           p_f89$data %>% dplyr::filter(model == "analytical")))
+both_num <- bind_rows(list(p_s37$data %>% dplyr::filter(model == "numerical"),
+                           p_f89$data %>% dplyr::filter(model == "numerical")))
+
+p_both_ana <- rpmodel_env_response(settings = settings, df_full = both_ana,p_output = "per_target")
+p_both_num_t <- rpmodel_env_response(settings = settings, df_full = both_num, p_output = "per_target", scales_to_one = F)
+p_both_num_d <- rpmodel_env_response(settings = settings, df_full = both_num, p_output = "per_driver", scales_to_one = T)
+
+ 
+p1 <- p_both_ana$plot[[2]] +   labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Analytical Model: Sensitivity Analysis of Vcmax") + 
+p2 <- p_both_ana$plot[[3]] +   labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
+p5 <- p_both_ana$plot[[1]] +   labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Analytical Model: Sensitivity Analysis of Jmax")  + 
+p3 <- p_both_num_t$plot[[2]] + labs(caption = NULL, title = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Numerical Model: Sensitivity analysis of Vcmax") + 
+p4 <- p_both_num_t$plot[[3]] + labs(caption = NULL, title = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
+p6 <- p_both_num_t$plot[[1]] + labs(caption = NULL, title = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Numerical Model: Sensitivity analysis of Jmax")  + 
+
+(pana <- p1 / p2 / p5 +
+        plot_layout(guides = "collect" ) &
+        theme(legend.position = "bottom") &
+        plot_annotation(title = bquote("Sensitivity analyis for analytical Models | Comparison of  " ~ J[max] ~ "- Formulations")))
+```
+
+## Fig. B.7. Sensitivity analysis of Vcmax, Jmax and χ of the numerical P-Model setups
+```{r, fig.height = 8, fig.width = 8}
+(pnum <- p3 / p4 / p6 + 
+        plot_layout(guides = "collect") & 
+        theme(legend.position = "bottom") & 
+        plot_annotation(title = bquote("Sensitivity analyis for numerical Models | Comparison of  " ~ J[max] ~ "- Formulations")))
+```
+
+## Fig. B.8. Sensitivity analysis of Vcmax, Jmax and χ of the analytical and numerical P-Model using the Smith-Formulation
+```{r, fig.height = 8, fig.width = 8}
+## Smith
+p1 <- p_s37$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Smith-Formulation: Sensitivity Analysis of Chi")
+p2 <- p_s37$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Smith-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_s37$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Smith-Formulation: Sensitivity Analysis of Jmax")
+
+(p <- p2 / p3 / p1 +
+          plot_layout(guides = "collect") &
+          theme(legend.position = "bottom") &
+          plot_annotation(title = bquote("Sensitivity Analysis for Smith - Formulation | Comparison of analytical vs. numerical setup")))
+```
+
+## Fig. B.9. Sensitivity analysis for Vcmax, Jmax and χ of the analytical and numerical P-Model using the Farquhar-Formulation
+```{r}
+## Farquhar
+p1 <- p_f89$plot[[1]] + labs(title = NULL, caption = NULL) + ylab(bquote(chi ~ "[-]")) + xlab(" ") + ylim(0, 1) # ggtitle("Farq-Formulation: Sensitivity Analysis of Chi")
+p2 <- p_f89$plot[[2]] + labs(title = NULL, caption = NULL) + ylab(bquote(V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 200) # ggtitle("Farq-Formulation: Sensitivity Analysis of Vcmax")
+p3 <- p_f89$plot[[3]] + labs(title = NULL, caption = NULL) + ylab(bquote(J[max] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) + xlab(" ") + ylim(0, 600) # ggtitle("Farq-Formulation: Sensitivity Analysis of Jmax")
+
+(p <- p2 / p3 / p1 +
+        plot_layout(guides = "collect") &
+        theme(legend.position = "bottom") &
+        plot_annotation(title = bquote("Sensitivity Analysis for Farquhar - Formulation | Comparison of analytical vs. numerical setup")))
+```
+
+## Fig. B.10. Comparison of start and output values from the numerical optimization routine
+```{r, fig.height = 4, fig.width = 4}
+p <- get_cost_function_instability()
+p
+```
+
+## Fig. B.11. Correlation of observed against predicted Vcmax using the numerical acclimated P-Model with and without energy balance models
+```{r}
+ptitle <- bquote("Effect of energy balance model on the prediction of " ~ V[cmax])
+
+df_all_eb <- bind_rows(list(
+    p_noeb$data %>% dplyr::filter(variable == "vcmax")  %>% mutate(eb_model = "no energy balance"),
+    p_eb_pl$data %>% dplyr::filter(variable == "vcmax") %>% mutate(eb_model = "plantecophys"),
+    p_eb_te$data %>% dplyr::filter(variable == "vcmax") %>% mutate(eb_model = "tealeaves")))
+
+p1 <- df_all_eb %>% ggplot() +
+    geom_errorbar(aes(x = x, ymin = y - vcmax_se, ymax = y + vcmax_se, color = climate_zone), alpha = 1.5) +
+    geom_point(aes(x = x, y = y, fill = climate_zone), col = "black", size = 2, alpha = 1, shape = 21) +
+    scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+    scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
+    geom_smooth(aes(x = x, y = y), method = "lm", fullrange = T, color = "black") +
+    geom_abline(linetype = "dotted") +
+    
+    # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
+    ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = x, y = y, label = paste(..rr.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
+    ggpmisc::stat_poly_eq(formula = y ~ x, aes(x = x, y = y, label = paste(..n.label.., sep = "~~~") ), vjust = 3, parse = TRUE) +
+    facet_wrap(~eb_model) +
+    xlim(0, 250) +
+    ylim(0, 250) +
+    ylab(bquote("Observed"~V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+    xlab(bquote("Predicted"~V[cmax] ~ "[µmol" ~ m^-2 ~ s ^-1 ~ "]")) +
+    theme(legend.position = "none", legend.justification = "center")
+
+## .................................................................................................
+### T_growth: air vs leaf
+p2 <- df_all_eb %>% 
+    ggplot() +
+    aes(tc_growth_air, tc_growth_leaf) +
+    geom_abline(linetype = "dotted") +
+    geom_errorbar(aes(x = tc_growth_air, ymin = tc_growth_air*1000 - 10, ymax = tc_growth_air*1000 + 10, color = climate_zone), alpha = 0.8) +
+    geom_point(aes(tc_growth_air, tc_growth_leaf, fill = climate_zone), shape = 21, alpha = 0.8, size = 2) +
+    # geom_smooth(method = "lm", fullrange = T, color = "black") +
+    # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..eq.label.., sep = "~~~")), vjust = 1, parse = TRUE) +
+    # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..rr.label.., sep = "~~~")), vjust = 2.25, parse = TRUE) +
+    # ggpmisc::stat_poly_eq(formula = y ~ x, aes(label = paste(..n.label.., sep = "~~~") ), vjust = 5, parse = TRUE) +
+    facet_wrap(~eb_model) +
+    xlim(5, 35) +
+    ylim(5, 35) +
+    scale_fill_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10, override.aes=list(shape=21))) +
+    scale_color_manual(values = c("Af"="#960000", "Am"="#FF0000", "Aw"="#FFCCCC", "BSh"="#CC8D14", "BSk"="#CCAA54", "BWh"="#FFCC00", "Cfa"="#007800", "Cfb"="#005000", "Cwa"="#BEBE00", "Cwb"="#8C8C00"),
+                      name = "Koeppen-Geiger Climate Zone",
+                      guide = guide_legend(direction = "horizontal", title.position = "top", ncol = 10)) +
+    theme(legend.position = "bottom") +
+    ylab(bquote("Growth"~T[leaf] ~ "[°C]")) +
+    xlab(bquote("Growth"~T[air] ~ "[°C]")) +
+    theme(legend.position = "bottom", legend.justification = "center")
+
+(p <- p1 / p2 + plot_annotation(title = ptitle))
+
+```
+
+# Appendix: Optimal Temperature
+## Fig. C.1. Example of date-wise aggregation to extract observed Topt
+```{r}
+#todo
+```
+
+## Fig. C.2. Correlation of observed against predicted Topt under low light forcing for model setups notshown in main text
+```{r fig.height=7, fig.width=7}
+## Smith (included in results)
+p1 <- all_inst_farq_growth_with_eb$ana$plot + xlab(NULL) + labs(caption = NULL, title = "Analytical P-Model + Farquhar")
+p2 <- all_inst_farq_growth_with_eb$num$plot + xlab(NULL) + ylab(NULL) + labs(caption = NULL, title = "Numerical P-Model")
+p3 <- all_inst_farq_growth_with_eb$pla$plot + labs(caption = NULL, title = "Numerical + plantecophys model")
+p4 <- all_inst_farq_growth_with_eb$tea$plot + ylab(NULL) + labs(caption = NULL, title = "Numerical + tealeaves model")
+
+(p <- p1 + p2 + p3 + p4 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+
+## Farquhar (not included because difference to Smith is negligible)
+p1 <- all_inst_smith_growth_with_eb$ana$plot + xlab(NULL) + labs(caption = NULL, title = "Analytical P-Model + Farquhar")
+p2 <- all_inst_smith_growth_with_eb$num$plot + xlab(NULL) + ylab(NULL) + labs(caption = NULL, title = "Numerical P-Model")
+p3 <- all_inst_smith_growth_with_eb$pla$plot + labs(caption = NULL, title = "Numerical + plantecophys model")
+p4 <- all_inst_smith_growth_with_eb$tea$plot + ylab(NULL) + labs(caption = NULL, title = "Numerical + tealeaves model")
+
+(p <- p1 + p2 + p3 + p4 + plot_layout(guides = "collect") & theme(legend.position = "bottom"))
+```
+
+## Fig. C.3. Thermal response of Ac, Aj (both Jmax-Formulations, RD, Agross and Anet)
+```{r fig.height=7, fig.width=7}
+(p <- sens_growth_ppfd())
+p
+```
+
+## Fig. C.4. Thermal response of Ac, Aj (both Jmax-Formulations with varying input level for growth lightforcing)
+```{r fig.height=3, fig.width=6}
+p <- sens_acc_jmax()
+p
+```
+
+## Fig. C.5. Thermal response of Ac, Aj (both Jmax-Formulations with varying input level for Jmax)
+```{r, fig.height=7, fig.width=7}
+p <- sens_tc_growth()
+p
+```
+
+## Fig. C.6. Thermal response of Ac, Aj (both Jmax-Formulations with varying input level for growth temperature)
+```{r fig.height=4, fig.width=8}
+p <- sens_agross_anet()
+p
+```
+
+## Fig. C.7. Comparison of observed Topt to observed growth Tair and predicted growth Tleaf using low light forcing
+```{r fig.height=4, fig.width=8}
+out <- plot_topt_tgrowth(df_in = all_inst_smith_growth_with_eb$df_all, y = "tc_opt_obs")
+(p <- out$p_p_opt_gro + labs(subtitle = "Low light forcing"))
+```
+
+## Fig. C.8. Comparison of simulated Topt to observed growth Tair for the analytical P-Models
+```{r fig.height=6, fig.width=5.5}
+out <- plot_analytical_both_light_forcings(all_inst_smith_growth_with_eb, all_inst_smith_meas_with_eb, all_inst_farq_growth_with_eb, all_inst_farq_meas_with_eb)
+p_low <- out$p_low
+p_high <- out$p_high
+(p <- p_low / p_high + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = bquote("Simulated" ~ T[opt] ~ "compared to growth temp. | Analytical models")))
+```
+
+## Fig. C.9. Comparison of simulated Topt to observed growth Tair for the numerical P-Models
+```{r fig.height=6, fig.width=6}
+out_sim_leaf <- plot_topt_tgrowth(df_in = all_inst_smith_meas_with_eb$df_all, y = "tc_opt_sim")
+p_high <- out_sim_leaf$p_p_opt_gro + labs(subtitle = "High light forcing", title = NULL)
+
+out_sim_leaf <- plot_topt_tgrowth(df_in = all_inst_smith_growth_with_eb$df_all, y = "tc_opt_sim")
+p_low <- out_sim_leaf$p_p_opt_gro + labs(subtitle = "Low light forcing", title = NULL)
+(p <- p_low / p_high + plot_layout(guides = "collect") & theme(legend.position = "bottom") & plot_annotation(title = bquote("Simulated" ~ T[opt] ~ "compared to growth temp. | Numerical models")))
+```
+

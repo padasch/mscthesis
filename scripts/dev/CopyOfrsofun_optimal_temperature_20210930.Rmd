@@ -1,0 +1,129 @@
+---
+title: "rsofun runs for optimal temperature data"
+author: "Pascal Schneider"
+output: html_document
+---
+
+# Benchmark of opt. temperature via observations
+## Description
+
+- Please make sure to use rsofun version 3.4 to run code below
+
+## Load data
+```{r}
+library(rsofun)
+library(ingestr)
+library(tidyverse)
+```
+
+```{r}
+load("~/data/rsofun_benchmarking/df_drivers_topt_v3.4.Rdata")
+```
+
+- There seem to be some leap year dates which create problems for rsofun. Drop Feb. 29 dates.
+
+```{r}
+df_drivers_topt <- df_drivers_topt %>% 
+  dplyr::select(sitename, forcing) %>% 
+  unnest(forcing) %>% 
+  dplyr::filter(!(month(date)==2 & mday(date)==29)) %>% 
+  group_by(sitename) %>% 
+  nest() %>%
+  rename(forcing = data) %>% 
+  right_join(
+    df_drivers_topt %>% 
+      dplyr::select(-forcing),
+    by = "sitename"
+  ) %>% 
+  ungroup()
+```
+
+
+## Calibrate model
+
+- This is taken from the rsofun version 3.4 calibration using Fluxnet:
+
+```{r}
+params_modl <- list(
+	kphio           = 0.05,
+	soilm_par_a     = 1.0,
+	soilm_par_b     = 0.0,
+	vpdstress_par_a = 9999,
+	vpdstress_par_b = 9999,
+	vpdstress_par_m = 9999
+	)
+
+load("~/data/rsofun_benchmarking/settings_calib_v3.4.Rdata")
+
+params_modl <- update_params(params_modl, settings_calib)
+```
+
+
+## Run model
+```{r  warning=FALSE, message=FALSE, error=FALSE}
+detach("package:rsofun", unload = TRUE)
+library(rsofun)
+
+df_output <- runread_pmodel_f(
+     df_drivers = df_drivers_topt,
+     params_modl = params_modl, 
+     makecheck = TRUE,
+     parallel = FALSE
+     )
+
+# Save output
+# saveRDS(df_output, "~/data/mscthesis/final/rsofun_v3.4_topt_k19_tau30.rds")
+```
+
+
+## Evaluation results
+
+Load observed optimal temperature data
+```{r}
+load("~/data/rsofun_benchmarking/obs_eval_topt_v3.4.Rdata")
+```
+
+```{r}
+df_topt_eval <- left_join(obs_eval_topt,
+                          df_output %>%
+                              unnest(data) %>% 
+                              rename(tc_opt_sim = topt),
+                          by = c("sitename", "date"))
+```
+
+
+### Metrics
+```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+fit   <- lm(tc_opt_obs ~ tc_opt_sim, data = df_topt_eval)
+sry   <- summary(fit)
+r2    <- sry$adj.r.squared %>% round(2)
+rmse  <- sqrt( ( c(crossprod(sry$residuals)) / length(sry$residuals) ) ) %>% round(2)
+slope <- sry$coefficients[2, 1] %>% round(2)
+b0_sign <- sry$coefficients[1, 4] <= 0.05 # T = Intercept is signficantly different from 0
+b1_sign <- !(between(1, confint(fit, 'tc_opt_sim', level=0.95)[1] %>% round(2), confint(fit, 'tc_opt_sim', level=0.95)[2]) %>% round(2)) # T = Slope is significantly different from 1
+bias  <- mean(df_topt_eval$tc_opt_sim - df_topt_eval$tc_opt_obs) %>% round(2)
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE}
+lm(tc_opt_obs ~ tc_opt_sim, data = df_topt_eval) %>% summary()
+```
+
+
+### Visualisations
+```{r}
+df_topt_eval %>% 
+    ggplot() +
+    aes(x = tc_opt_sim, y = tc_opt_obs) +
+	geom_abline(linetype = "dotted") +
+    geom_point() +
+	geom_smooth(method = "lm", size = 0.5, fullrange = T, color = "red") +
+	xlim(0, 40) +
+	ylim(0, 40) +
+	xlab(bquote("Predicted " ~ T[opt] ~ " [°C]")) +
+	ylab(bquote("Observed " ~ T[opt] ~ " [°C]")) +
+	labs(title = "Optimal Temperature",
+		 subtitle = bquote(R^2  ~  " = "  ~ .(r2)  ~  " | bias = "  ~ .(bias)  ~  " | slope = "  ~ .(slope) ~  " | RMSE = "  ~ .(rmse))) +
+    theme_classic()
+```
+
